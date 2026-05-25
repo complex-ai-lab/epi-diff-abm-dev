@@ -26,9 +26,13 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.num_timesteps = self.config["simulation_metadata"]["num_steps_per_episode"]
         self.num_weeks = self.config["simulation_metadata"]["NUM_WEEKS"]
 
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        self.data_dir = os.path.join(project_root, 'data')
+
         self.networks = self._preload_all_networks()
-        self.household_net = self._load_single_net(f"data/networks/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/HOUSEHOLD_NETWORK.pkl")
+        self.household_net = self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/HOUSEHOLD_NETWORK.pkl")
         self.proportion_history = []
+        self.age_proportion_history = []
 
         self.STAGE_UPDATE_VAR = 1
         self.INFINITY_TIME = self.config["simulation_metadata"]["INFINITY_TIME"]
@@ -68,12 +72,13 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
         I_bar = torch.gather(x_i[:, 4], 0, edge_network_numbers.long()).view(-1)
 
-        will_isolate = x_i[:, 6] 
+        will_isolate = x_i[:, 6]
+        not_isolated = 1 - will_isolate
 
         if self.mode == "llm":
             res = (
                 R * S_A_s * A_s_i * B_n * integrals / I_bar
-            ) 
+            )
         else:
             res = R * S_A_s * A_s_i * B_n * integrals / I_bar
 
@@ -102,26 +107,23 @@ class NewTransmission(SubstepTransitionMessagePassing):
             + (current_stages == self.RECOVERED_VAR)*self.RECOVERED_VAR + (current_stages == self.MORTALITY_VAR)*self.MORTALITY_VAR \
             + (current_stages == self.EXPOSED_VAR)*transition_to_infected \
             + (current_stages == self.INFECTED_VAR)*transition_to_mortality_or_recovered
-        
+
         current_stages = newly_exposed_today*self.EXPOSED_VAR + stage_progression
         return current_stages
 
     def update_transition_times(self, t, agents_next_stage_times, newly_exposed_today, current_stages):
         """Note: not differentiable"""
-        ''' update time '''
         exposed_to_infected_time = self.EXPOSED_TO_INFECTED_TIME
-        infected_to_recovered_time = self.INFECTED_TO_RECOVERED_TIME
-
         new_transition_times = torch.clone(agents_next_stage_times) 
         curr_stages = torch.clone(current_stages).long()
         new_transition_times[(curr_stages==self.INFECTED_VAR)*(agents_next_stage_times == t)] = self.INFINITY_TIME 
-        new_transition_times[(curr_stages==self.EXPOSED_VAR)*(agents_next_stage_times == t)] = t+infected_to_recovered_time 
+        new_transition_times[(curr_stages==self.EXPOSED_VAR)*(agents_next_stage_times == t)] = t+self.INFECTED_TO_RECOVERED_TIME 
         return newly_exposed_today*(t+1+exposed_to_infected_time) + (1 - newly_exposed_today)*new_transition_times
 
     def _generate_one_hot_tensor(self, timestep, num_timesteps):
         timestep_tensor = torch.tensor([timestep])
         one_hot_tensor = F.one_hot(timestep_tensor, num_classes=num_timesteps)
-        one_hot_tensor = one_hot_tensor.view(1, -1) 
+        one_hot_tensor = one_hot_tensor.view(1, -1)
         return one_hot_tensor.to(self.device)[0]
 
     def update_infected_times(self, t, agents_infected_times, newly_exposed_today):
@@ -133,26 +135,55 @@ class NewTransmission(SubstepTransitionMessagePassing):
         updated_infected_times[newly_exposed_today.bool()] = t
 
         return updated_infected_times
-    
+
     def get_stage_proportions(self, t, current_stages):
         total_people = current_stages.shape[0]
-
         counts = torch.stack([
             (current_stages == self.SUSCEPTIBLE_VAR).sum(),
             (current_stages == self.EXPOSED_VAR).sum(),
-            (current_stages == 2).sum(), 
+            (current_stages == 2).sum(),
             (current_stages == self.RECOVERED_VAR).sum(),
-            (current_stages == 4).sum(), 
+            (current_stages == 4).sum(),
         ])
         proportions = counts.float() / total_people
-        
+
         self.proportion_history.append([t] + proportions.detach().cpu().tolist())
-    
+
+    def save_proportions_to_disk(self, output_path):
+        if self.proportion_history:
+            df = pd.DataFrame(self.proportion_history, 
+                            columns=["t", "susceptible", "exposed", "infected", "recovered", "dead"])
+            df.to_csv(output_path, index=False)
+
+    def save_proportions_to_disk2(self, output_path, epoch_num):
+        if self.proportion_history:
+            cols = [
+                "t", 
+                f"susceptible_{epoch_num}", 
+                f"exposed_{epoch_num}", 
+                f"infected_{epoch_num}", 
+                f"recovered_{epoch_num}", 
+                f"dead_{epoch_num}"
+            ]
+
+            new_df = pd.DataFrame(self.proportion_history, columns=cols)
+
+            if os.path.exists(output_path):
+                existing_df = pd.read_csv(output_path)
+
+                if "t" in existing_df.columns:
+                    final_df = pd.merge(existing_df, new_df, on="t", how="outer")
+                else:
+                    final_df = pd.concat([existing_df, new_df.drop(columns=["t"])], axis=1)
+            else:
+                final_df = new_df
+
+            final_df.to_csv(output_path, index=False)
+
     def modify_initial_infected(self, current_stages, proportion, tau=0.5, hard=True):
         device = current_stages.device
         N = int(self.config['simulation_metadata']['num_agents'])
 
-        k = int((N * proportion.detach().item()))
         new_stages = current_stages.clone()
         new_stages[:, 0] = 0.0
 
@@ -165,29 +196,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         new_stages[:, 0] = 2.0 * infected_mask
 
         return new_stages
-    
-    def generate_social_distancing_schedule(self, initial_factor=1.0, lambda_=0.01, total_steps=28):
-        social_distancing_schedule = []
-        current_factor = initial_factor
-        
-        for t in range(total_steps):
-            current_factor = current_factor * math.exp(-lambda_)
-            social_distancing_schedule.append(current_factor)
-        
-        return torch.tensor(social_distancing_schedule, dtype=torch.float32)
-    
-    def get_infected_time(self, agents_stages):
 
-        agents_infected_time = (500) * torch.ones_like(
-            agents_stages
-        )
-        agents_infected_time[agents_stages == 1] = (
-            -1
-        ) 
-        agents_infected_time[agents_stages == 2] = -1*self.EXPOSED_TO_INFECTED_TIME
-
-        return agents_infected_time.float()
-    
     def get_mean_agent_interactions(self, agents_ages):
         ADULT_LOWER_INDEX, ADULT_UPPER_INDEX = (
             1,
@@ -208,19 +217,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         agents_mean_interactions[elderly_agents.bool(), 0] = mean_int_ran_mu[2]
 
         return agents_mean_interactions
-    
-    def get_next_stage_time(
-        self, t, agents_stages, exposed_to_infected_times=5, infected_to_recovered_times=20
-    ):
-        agents_next_stage_time = (500) * torch.ones_like(
-            agents_stages
-        )
 
-        agents_next_stage_time[(agents_stages==self.INFECTED_VAR)*(agents_stages == t)] = self.INFINITY_TIME
-        agents_next_stage_time[(agents_stages==self.RECOVERED_VAR)*(agents_stages == t)] = t+infected_to_recovered_times
-
-        return agents_next_stage_time.float()
-    
     def update_initial_times(self, agents_next_stage_times, agents_infected_time, agents_stages):
         infected_to_recovered_time = self.INFECTED_TO_RECOVERED_TIME
         exposed_to_infected_time = self.EXPOSED_TO_INFECTED_TIME
@@ -231,20 +228,18 @@ class NewTransmission(SubstepTransitionMessagePassing):
         agents_next_stage_times[agents_stages==self.INFECTED_VAR] = infected_to_recovered_time
 
         return agents_infected_time, agents_next_stage_times
-    
+
     def soft_eq(self, x, target, temperature=0.1):
         diff = torch.abs(x - target)
         return torch.exp(-diff / temperature)
-    
+
     def combined(self, x, target, t, agents_next_stage_times):
         soft = self.soft_eq(x, target)
         hard = (x == target).float() * (agents_next_stage_times <= t).float()
 
         return hard.detach() + soft - soft.detach()
 
-    
     def update_number_of_dead(self, daily_dead, current_stages, agents_next_stage_times, t, newly_exposed_today):
-        ''' Get recovered (no longer infectious) + targets '''
         if self.calibration_mode:
             mortality_rate = self.calibrate_M.to(self.device)
         else:
@@ -263,53 +258,78 @@ class NewTransmission(SubstepTransitionMessagePassing):
         )
 
         return daily_dead
-    
-    def combine_networks(self, school_net, occ_net, random_net, household_net):
-        combined_tensor = torch.cat([school_net, occ_net, random_net, household_net],dim=0)
-        return combined_tensor
 
     def update_adjacency_matrix(self, state, combined_net):
         source_nodes = combined_net[:, 0]
         target_nodes = combined_net[:, 1]
-        
+
         edge_list = torch.stack((source_nodes, target_nodes), dim=0).to(self.device)
-        
+
         edge_attr = torch.ones(2, edge_list.size(1)).to(self.device) 
 
         adjacency_matrix_path = ["network", "agent_agent", "infection_network", "adjacency_matrix"]
         adjacency_matrix = (edge_list, edge_attr)
-        
+
         return set_by_path(state, adjacency_matrix_path, adjacency_matrix)
-    
+
     def _load_single_net(self, path):
         df = pd.read_pickle(path)
         if hasattr(df, 'edges'):
             df = pd.DataFrame(df.edges(), columns=["node1", "node2"])
         return torch.tensor(df.values, device=self.device, dtype=torch.long)
-    
+
     def _preload_all_networks(self):
         """Load all time-step networks into a dictionary of tensors on the GPU."""
         nets = {'school': [], 'occ': [], 'rand': []}
         population = self.config['simulation_metadata']['POPULATION']
         for t in range(self.num_timesteps):
-            nets['school'].append(self._load_single_net(f"data/networks/{population}/mobility_networks/schoolnets/{t}.pkl"))
-            nets['occ'].append(self._load_single_net(f"data/networks/{population}/mobility_networks/occnets/{t}.pkl"))
-            nets['rand'].append(self._load_single_net(f"data/networks/{population}/mobility_networks/randnets/{t}.pkl"))
+            nets['school'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/schoolnets/SCHOOL_NETWORK.pkl"))
+            nets['occ'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{t}.pkl"))
+            nets['rand'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/randnets/{t}.pkl"))
         return nets
-    
+
     def apply_intervention_fast(self, intervention, edges):
         if edges.size(0) == 0: return edges
-            
+
         if intervention == 0:
             sample = torch.clamp(torch.normal(0.5, 0.15, (1,)), 0, 0.25).to(self.device)
         else:
             sample = torch.clamp(torch.normal(0.5, 0.15, (1,)), 0.75, 1).to(self.device)
-            
+
         keep_frac = (1.0 - sample).item()
         k = int(edges.size(0) * keep_frac)
-        
+
         idx = torch.randperm(edges.size(0), device=self.device)[:k]
         return edges[idx]
+
+    def get_age_stage_proportions(self, t, current_stages, agents_ages):
+            ADULT_LOWER_INDEX, ADULT_UPPER_INDEX = 1, 4
+
+            child_agents = (agents_ages < ADULT_LOWER_INDEX).view(-1)
+            adult_agents = torch.logical_and(
+                agents_ages >= ADULT_LOWER_INDEX, agents_ages <= ADULT_UPPER_INDEX
+            ).view(-1)
+            elderly_agents = (agents_ages > ADULT_UPPER_INDEX).view(-1)
+
+            masks = [child_agents, adult_agents, elderly_agents]
+            row = [t]
+
+            for mask in masks:
+                total_people_in_group = mask.sum()
+                if total_people_in_group > 0:
+                    counts = torch.stack([
+                        (current_stages[mask] == self.SUSCEPTIBLE_VAR).sum(),
+                        (current_stages[mask] == self.EXPOSED_VAR).sum(),
+                        (current_stages[mask] == 2).sum(),
+                        (current_stages[mask] == self.RECOVERED_VAR).sum(),
+                        (current_stages[mask] == 4).sum(),
+                    ])
+                    proportions = counts.float() / total_people_in_group
+                    row.extend(proportions.detach().cpu().tolist())
+                else:
+                    row.extend([0.0] * 5)
+
+            self.age_proportion_history.append(row)
 
     def forward(self, state, action=None):
         input_variables = self.input_variables
@@ -318,7 +338,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         generating_counterfactual = self.config['simulation_metadata']['GENERATING_COUNTERFACTUAL']
         cf_type = self.config['simulation_metadata']['COUNTERFACTUAL_TYPE']
         with_k = self.config['simulation_metadata']['WITH_K']
-
+        
         intervention_df = pd.read_csv(f"{self.config['simulation_metadata']['population_dir']}/intervention.csv")
         curr_intervention = intervention_df[intervention_df['t'] == t]
 
@@ -326,13 +346,36 @@ class NewTransmission(SubstepTransitionMessagePassing):
         occ_intervention = curr_intervention.iloc[0]['occ_intervention']
 
         if generating_counterfactual:
-            if cf_type == 1 or cf_type == 3:
-                school_intervention = 1 - school_intervention
+            if (t == 0):
+                print(f"Counterfactual Type: {cf_type}")
             
-            if cf_type == 2 or cf_type == 3:
-                occ_intervention = 1 - occ_intervention
+            logic_map = {
+                1: (0, 0),   
+                2: (1, 0),   
+                3: (0, 1),  
+                4: (1, 1),  
+                5: (0, "F"),
+                6: (0, "CF"),
+                7: ("F", "F"),
+                8: ("CF", "F"),
+                9: ("F", "CF"),
+                10: ("CF", "CF")
+            }
 
-        school_net = self.apply_intervention_fast(school_intervention, self.networks['school'][t])
+            if cf_type in logic_map:
+                s_logic, o_logic = logic_map[cf_type]
+
+                if s_logic == "CF":
+                    school_intervention = 1 - school_intervention
+                elif s_logic != "F":
+                    school_intervention = s_logic
+
+                if o_logic == "CF":
+                    occ_intervention = 1 - occ_intervention
+                elif o_logic != "F":
+                    occ_intervention = o_logic
+
+        school_net = self.apply_intervention_fast(school_intervention, self.networks['school'][0])
         occ_net = self.apply_intervention_fast(occ_intervention, self.networks['occ'][t])
 
         combined_net = torch.cat([
@@ -354,12 +397,13 @@ class NewTransmission(SubstepTransitionMessagePassing):
             initial_infection_rate = self.calibrate_infected_proportion.to(self.device)
             k = self.calibrate_k.to(self.device)
         else:
-            R_tensor = self.learnable_args["R2"] 
+            R_tensor = self.learnable_args["R2"]
             initial_infection_rate = self.learnable_args["infected_proportion"]
             k = self.learnable_args["k"]
         
         if (t == 0):
             self.proportion_history = []
+            self.age_proportion_history = []
 
         R = (R_tensor.T * week_one_hot).sum()
 
@@ -403,23 +447,23 @@ class NewTransmission(SubstepTransitionMessagePassing):
         all_node_attr = (
             torch.stack(
                 (
-                    agents_ages.to(self.device), 
-                    current_stages.detach(), 
-                    agents_infected_index, 
-                    agents_infected_time, 
-                    agents_mean_interactions_split.to(self.device), 
+                    agents_ages.to(self.device),
+                    current_stages.detach(),
+                    agents_infected_index,
+                    agents_infected_time,
+                    agents_mean_interactions_split.to(self.device),
                     torch.unsqueeze(
                         torch.arange(self.config["simulation_metadata"]["num_agents"]),
                         1,
                     ).to(
                         self.device
-                    ), 
+                    ),
                     will_isolate,
                 )
             )
             .transpose(0, 1)
             .squeeze()
-        ) 
+        )
 
         agents_data = Data(
             all_node_attr, edge_index=all_edgelist, edge_attr=all_edgeattr, t=t
@@ -437,13 +481,11 @@ class NewTransmission(SubstepTransitionMessagePassing):
         )
 
         prob_not_infected = torch.exp(-1 * new_transmission)
-
         probs = torch.hstack((1 - prob_not_infected, prob_not_infected))
-
 
         potentially_exposed_today = self.st_bernoulli(probs)[:, 0].to(
             self.device
-        ) 
+        )
 
         newly_exposed_today = (
             current_stages == self.SUSCEPTIBLE_VAR
@@ -471,9 +513,9 @@ class NewTransmission(SubstepTransitionMessagePassing):
             t, agents_infected_time, newly_exposed_today
         )
 
-
         self.get_stage_proportions(t, updated_stages)
-
+        self.get_age_stage_proportions(t, updated_stages, agents_ages)
+        
         return {
             self.output_variables[0]: updated_stages,
             self.output_variables[1]: updated_next_stage_times,
