@@ -1,15 +1,13 @@
-from AgentTorch.agent_torch.core import Runner, Registry
+from agent_torch.core import Runner, Registry
 
 def get_registry():
     reg = Registry()
 
     from .substeps.new_transmission.action import MakeIsolationDecision
     from .substeps.new_transmission.transition import NewTransmission
-    from .substeps.seirm_progression.transition import SEIRMProgression
 
     reg.register(MakeIsolationDecision, "make_isolation_decision", key="policy")
     reg.register(NewTransmission, "new_transmission", key="transition")
-    reg.register(SEIRMProgression, "seirm_progression", key="transition")
 
     from .substeps.utils import (
         network_from_file,

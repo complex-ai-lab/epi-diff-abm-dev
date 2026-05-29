@@ -6,4 +6,3 @@ full
 182
 yes
 INPUT
-c

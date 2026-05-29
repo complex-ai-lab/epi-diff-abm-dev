@@ -2,63 +2,98 @@
 
 This repository provides the implementation of an Agent-Based Model (ABM) benchmark for COVID-19 transmission and intervention modeling.
 
+## Papers using this project
+*   
+*   
+
+## Overview
+The goal of this benchmark is to provide a standardized environment for simulating COVID-19 dynamics and testing various intervention strategies (counterfactuals). The pipeline follows a structured workflow:
+1.  **Synthetic Population & Network Generation**: We generate digital representations of agents and their interaction environments (digital twins) for specific counties.
+2.  **Simulation & Calibration**: We use differentiable simulations to calibrate model parameters to historical COVID-19 data.
+3.  **Counterfactual Analysis**: We evaluate the impact of hypothetical policy changes (e.g., toggling school or workplace restrictions) compared to factual history.
+
+## Requirements & API Keys
+
+### Dependencies
+The project requires a Python environment (>=3.9). Install all requirements using:
+```bash
+pip install -r requirements.txt
+```
+
+### API Keys
+The data preparation scripts require access to external APIs. Create a `.env` file in the root directory with the following keys:
+*   `COVIDCAST_API_KEY`: Required for the [Delphi COVIDcast API](https://cmu-delphi.github.io/delphi-epidata/api/covidcast_clients.html) to fetch epidemiological data.
+*   `CENSUS_API_KEY`: Required for the [US Census Bureau API](https://api.census.gov/data/key_signup.html) to fetch demographic distributions.
+
 ## How to run
-To run the simulations, follow the instructions below.
 
-### Setup environment
-Use `environment.yml` to create the corresponding conda environment:
+### Step 1: Data Preparation
+In this step, we generate synthetic populations and mobility networks by combining real-world demographic and epidemiological data.
+
+**What we are generating:**
+*   **Synthetic Populations**: We use US Census data (household size, age, and occupation distributions) to create a set of digital agents that statistically match the demographic profile of a target county.
+*   **Interaction Networks**: We construct mobility and contact networks (Household, School, and Occupational) that define how agents interact. This procedure maps agents to specific interaction "venues" based on their demographic attributes (e.g., assigning children to schools and adults to specific industry sectors).
+
+**Execution:**
+To execute the entire data preparation pipeline (fetching data and generating networks), run:
 ```bash
-conda env create -f environment.yml
-conda activate covid_env
+bash scripts/data_prep.sh
 ```
+While `data_prep.sh` automates the process, you can manually run scripts in the `scripts/` and `networks/` folders for more control. Both directories contain their own respective `README.md` files with detailed instructions.
 
-### Step 1: Data preparation
-First, initialize the submodules to include necessary dependencies:
-```bash
-git submodule update --init --recursive
-```
+**Important**: Ensure that you run the network generation scripts (located in the `networks/` folder) to create the interaction networks required for the simulation, and make sure to run the script in the `scripts/` folder first.
 
-The final pre-processed dataset can also be found in the following link: [LINK_TO_DATASET_PENDING]
-
-**Preparation Order:**
-The data preparation process consists of two main stages:
-1.  **`scripts/`**: Run the scripts in the `scripts/` directory first to process raw county-level data into simulation-ready formats.
-2.  **`networks/`**: After processing the data, run the scripts in the `networks/` directory to generate the mobility networks.
-
-Both the `scripts/` and `networks/` directories contain their own respective `README.md` files with detailed instructions.
+*Note: Before running, ensure your `.env` file is set up and that the target counties/states are correctly configured in `scripts/delphi_api.py` and `scripts/census.py`.*
 
 ### Step 2: Main Experiment
-The core simulation and calibration logic is managed by `abm_nets.py`, which is executed through `main.py`.
+The core simulation and calibration logic is managed by `abm_nets.py`, which is executed through `main.py`. The experiment is divided into two primary phases: Calibration and Counterfactual Generation.
+
+#### A. Calibration (Training)
+In this phase, the model's learnable parameters (e.g., transmission rates, susceptibility) are calibrated to match historical COVID-19 data (cases and deaths).
+*   **Goal**: Find the parameter set that minimizes the loss between simulated and actual data.
+*   **Configuration**: Ensure `GENERATING_COUNTERFACTUAL` is set to `false` in `covid_abm/yamls/config.yaml`.
+*   **Epochs**: The number of training iterations can be configured in `abm_nets.py` by modifying the `epochs` variable (default is typically `251`).
+
+#### B. Counterfactual Generation
+Once the model is calibrated, you can run counterfactual scenarios to evaluate "what if" different policies (like school closures or work restrictions) had been implemented.
+*   **Goal**: Evaluate the impact of hypothetical interventions using calibrated parameters.
+*   **Configuration**: Set `GENERATING_COUNTERFACTUAL` to `true` in `covid_abm/yamls/config.yaml`.
+*   **Selecting Scenarios & Iterations**: You can select which counterfactual types to run and how many stochastic iterations to perform for each by modifying the following block in `abm_nets.py`:
+
+```python
+if generating_counterfactual:
+    cf_types_to_run = range(7, 11)  # Select the range of Counterfactual Types
+
+    for cf_type in cf_types_to_run:
+        # ...
+        num_iterations = 30  # Number of stochastic runs per scenario
+        for num in range(num_iterations):
+            # ...
+```
 
 #### Configuration Requirements
-Before running an experiment, ensure the following configurations are correctly set:
+Before running either phase, ensure the following configurations are correctly set:
 
 **1. `abm_nets.py` Modifications:**
-*   **Population Import**: At the top of the file, update the population import statement (e.g., `from populations import pop26007`).
-*   **Population Loader**: In the `eval_net` function, update the `Executor` initialization to use the correct population module (e.g., `sim = Executor(covid_abm, pop_loader=LoadPopulation(pop26007))`).
-*   **Averaging Range**: If generating counterfactuals, update `cf_types_to_run` (e.g., `range(7, 11)`) to specify which intervention types to execute.
-
-**2. `covid_abm/yamls/config.yaml` Modifications:**
-*   **`POPULATION`**: Specify the FIPS code of the target county.
-*   **`GENERATING_COUNTERFACTUAL`**: Set to `true` to run counterfactual scenarios (requires calibrated parameters), or `false` to perform training/factual calibration.
+*   **Population Import**: Update the population import statement (e.g., `from populations import pop01045`).
+*   **Population Loader**: Update the `Executor` initialization in `eval_net` to use the correct population module (e.g., `sim = Executor(covid_abm, pop_loader=LoadPopulation(pop01045))`).
+*   **Scenario Selection**: Update `cf_types_to_run` to specify which intervention types to execute.
 
 #### Counterfactual Types
-The simulation supports 10 distinct intervention scenarios (Counterfactual Types), defined by combinations of School and Occupational (Occ) restrictions:
+The simulation supports 10 distinct intervention scenarios, defined by combinations of School and Occupational (Occ) restrictions:
 
 | Type | School | Occ | Description |
 | :--- | :--- | :--- | :--- |
-| **1** | 0 | 0 | Both fixed to 0 (No restrictions) |
-| **2** | 1 | 0 | School fixed to 1, Occ fixed to 0 |
-| **3** | 0 | 1 | School fixed to 0, Occ fixed to 1 |
-| **4** | 1 | 1 | Both fixed to 1 (Full restrictions) |
-| **5** | 0 | Factual | School fixed to 0, Occ remains Factual |
-| **6** | 0 | Counterfactual | School fixed to 0, Occ is Flipped |
-| **7** | Factual | Factual | **Baseline Factual scenario** |
-| **8** | Counterfactual | Factual | School is Flipped, Occ remains Factual |
-| **9** | Factual | Counterfactual | School remains Factual, Occ is Flipped |
-| **10** | Counterfactual | Counterfactual | **Both School and Occ are Flipped** |
-
-*Note: "Flipped" (Counterfactual) means the intervention value is toggled (0 becomes 1, 1 becomes 0) relative to the historical data.*
+| **1** | 0 | 0 | No restrictions (Both fixed to 0) |
+| **2** | 1 | 0 | School closed (1), Occ open (0) |
+| **3** | 0 | 1 | School open (0), Occ closed (1) |
+| **4** | 1 | 1 | Full restrictions (Both fixed to 1) |
+| **5** | 0 | Factual | School open (0), Occ remains as it was historically |
+| **6** | 0 | Counterfactual | School open (0), Occ is toggled (0<->1) |
+| **7** | Factual | Factual | **Baseline Factual scenario** (Matches history) |
+| **8** | Counterfactual | Factual | School is toggled, Occ remains factual |
+| **9** | Factual | Counterfactual | School remains factual, Occ is toggled |
+| **10** | Counterfactual | Counterfactual | **Both School and Occ are toggled** |
 
 To run the experiment:
 ```bash

@@ -7,10 +7,10 @@ import pandas as pd
 import numpy as np
 import os
 
-from AgentTorch.agent_torch.core.substep import SubstepTransitionMessagePassing
-from AgentTorch.agent_torch.core.helpers import get_by_path
-from AgentTorch.agent_torch.core.helpers import set_by_path
-from AgentTorch.agent_torch.core.distributions import StraightThroughBernoulli
+from agent_torch.core.substep import SubstepTransitionMessagePassing
+from agent_torch.core.helpers import get_by_path
+from agent_torch.core.helpers import set_by_path
+from agent_torch.core.distributions import StraightThroughBernoulli
 
 class NewTransmission(SubstepTransitionMessagePassing):
     def __init__(self, config, input_variables, output_variables, arguments):
@@ -283,7 +283,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         nets = {'school': [], 'occ': [], 'rand': []}
         population = self.config['simulation_metadata']['POPULATION']
         for t in range(self.num_timesteps):
-            nets['school'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/schoolnets/SCHOOL_NETWORK.pkl"))
+            nets['school'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/schoolnets/{t}.pkl"))
             nets['occ'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{t}.pkl"))
             nets['rand'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/randnets/{t}.pkl"))
         return nets

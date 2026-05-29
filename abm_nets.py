@@ -10,8 +10,8 @@ import pandas as pd
 
 import covid_abm
 from populations import pop01045
-from AgentTorch.agent_torch.core.executor import Executor
-from AgentTorch.agent_torch.core.dataloader import LoadPopulation
+from agent_torch.core.executor import Executor
+from agent_torch.core.dataloader import LoadPopulation
 
 
 class LearnableParams(nn.Module):
@@ -244,7 +244,7 @@ def eval_net():
             sim.config['simulation_metadata']['COUNTERFACTUAL_TYPE'] = cf_type
             all_age_proportions = []
             
-            num_iterations = 30 if cf_type in range(7, 11) else 1
+            num_iterations = 30
 
             for num in range(num_iterations):
                 runner.state = deep_clone_state(initial_state)
@@ -298,7 +298,6 @@ def eval_net():
     epochs = 251
 
     for epoch in range(epochs):
-        print(epoch)
         torch.autograd.set_detect_anomaly(True)
         opt.zero_grad()
 

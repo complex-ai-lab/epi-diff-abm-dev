@@ -167,24 +167,24 @@ def generate_mobility_networks(state_abbrev, county, output_dir, num_steps, ages
             outfile = os.path.join(output_occ_dir, f"{t}.csv")
             nx.write_edgelist(G_all, outfile, delimiter=",", data=False)
 
-    # School network
-    n_agents = len(individuals)
-    G_school = normal_watts_strogatz_graph(
-        n=n_agents,             # Number of nodes
-        agents=agents_school,          # Agent IDs
-        mu=mu_school,                  # Degree average
-        sigma=sigma_school             # Degree standard deviation
-    )
+        # School network
+        n_agents = len(individuals)
+        G_school = normal_watts_strogatz_graph(
+            n=n_agents,             # Number of nodes
+            agents=agents_school,          # Agent IDs
+            mu=mu_school,                  # Degree average
+            sigma=sigma_school             # Degree standard deviation
+        )
     
-    # Save network to file
-    if(to_pickle):
-        outfile = os.path.join(output_school_dir, f"SCHOOL_NETWORK.pkl")
-        # Save to pickle
-        with open(outfile, "wb") as f:
-            pickle.dump(G_school, f)
-    else:
-        outfile = os.path.join(output_school_dir, f"SCHOOL_NETWORK.csv")
-        nx.write_edgelist(G_school, outfile, delimiter=",", data=False)
+        # Save network to file
+        if(to_pickle):
+            outfile = os.path.join(output_school_dir, f"{t}.pkl")
+            # Save to pickle
+            with open(outfile, "wb") as f:
+                pickle.dump(G_school, f)
+        else:
+            outfile = os.path.join(output_school_dir, f"{t}.csv")
+            nx.write_edgelist(G_school, outfile, delimiter=",", data=False)
     
     # Generation Household networks
     n_agents = len(individuals)
