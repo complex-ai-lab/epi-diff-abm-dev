@@ -28,7 +28,7 @@ The data preparation scripts require access to external APIs. Create a `.env` fi
 ## How to run
 
 ### Step 1: Data Preparation
-In this step, we generate synthetic populations and mobility networks by combining real-world demographic and epidemiological data.
+In this step, we generate synthetic populations and mobility networks by combining real-world time series demographic and epidemiological data.
 
 **What we are generating:**
 *   **Synthetic Populations**: We use US Census data (household size, age, and occupation distributions) to create a set of digital agents that statistically match the demographic profile of a target county.
@@ -99,3 +99,9 @@ To run the experiment:
 ```bash
 python main.py
 ```
+
+## Credits and Attributions
+This project includes code from the following sources. We are grateful for their contributions that made this work possible.
+
+**agenttorch**
+*   **Description**: Our `agent_torch` and `covid_abm` folders are based on the [agenttorch](https://github.com/agenttorch/agenttorch) repository.
