@@ -2,7 +2,7 @@
 
 This repository provides the implementation of an Agent-Based Model (ABM) benchmark for COVID-19 transmission and intervention modeling.
 
-## Papers using this project
+## Papers based on this project
 * [KDD 2026] [Benchmarking Counterfactual Prediction in Epidemic Time Series with Time-Varying Interventions](https://github.com/complex-ai-lab/epi-cf-benchmark)
 
 ## Overview
