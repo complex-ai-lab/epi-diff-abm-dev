@@ -1,10 +1,9 @@
-# ABM-Benchmark for COVID-19 Modeling
+# Epidemic Differentiable ABM
 
 This repository provides the implementation of an Agent-Based Model (ABM) benchmark for COVID-19 transmission and intervention modeling.
 
 ## Papers using this project
-*   
-*   
+* [KDD 2026] [Benchmarking Counterfactual Prediction in Epidemic Time Series with Time-Varying Interventions](https://github.com/complex-ai-lab/epi-cf-benchmark)
 
 ## Overview
 The goal of this benchmark is to provide a standardized environment for simulating COVID-19 dynamics and testing various intervention strategies (counterfactuals). The pipeline follows a structured workflow:
