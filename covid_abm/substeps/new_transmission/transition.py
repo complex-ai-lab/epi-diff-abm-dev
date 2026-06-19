@@ -31,6 +31,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
         self.networks = self._preload_all_networks()
         self.household_net = self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/HOUSEHOLD_NETWORK.pkl")
+        self.school_net = self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/SCHOOL_NETWORK.pkl")
         self.proportion_history = []
         self.age_proportion_history = []
 
@@ -280,10 +281,9 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
     def _preload_all_networks(self):
         """Load all time-step networks into a dictionary of tensors on the GPU."""
-        nets = {'school': [], 'occ': [], 'rand': []}
+        nets = {'occ': [], 'rand': []}
         population = self.config['simulation_metadata']['POPULATION']
         for t in range(self.num_timesteps):
-            nets['school'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/schoolnets/{t}.pkl"))
             nets['occ'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{t}.pkl"))
             nets['rand'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/randnets/{t}.pkl"))
         return nets
@@ -301,6 +301,35 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
         idx = torch.randperm(edges.size(0), device=self.device)[:k]
         return edges[idx]
+    
+    def apply_vaccines(self, current_stages, num_vaccines, tau=0.1):
+        device = current_stages.device
+        N = current_stages.shape[0]
+        
+        is_susceptible = self.soft_eq(current_stages, self.SUSCEPTIBLE_VAR, temperature=tau)
+        logits = torch.log(is_susceptible + 1e-10).view(N, 1)
+        
+        gumbels = -torch.log(-torch.log(torch.rand_like(logits) + 1e-10) + 1e-10)
+        y = logits + gumbels
+        
+        num_vax_int = int(num_vaccines.item()) if torch.is_tensor(num_vaccines) else int(num_vaccines)
+        num_vax_int = min(num_vax_int, int(is_susceptible.sum().item()))
+        
+        if num_vax_int <= 0:
+            return current_stages
+
+        _, indices = torch.topk(y.view(-1), num_vax_int)
+        
+        hard_mask = torch.zeros(N, 1, device=device)
+        hard_mask[indices] = 1.0
+        
+        soft_probs = torch.sigmoid(logits) 
+        vax_mask = (hard_mask - soft_probs).detach() + soft_probs
+        
+        stage_delta = (self.RECOVERED_VAR - self.SUSCEPTIBLE_VAR) * vax_mask
+        updated_stages = current_stages + stage_delta
+        
+        return updated_stages
 
     def get_age_stage_proportions(self, t, current_stages, agents_ages):
             ADULT_LOWER_INDEX, ADULT_UPPER_INDEX = 1, 4
@@ -338,12 +367,14 @@ class NewTransmission(SubstepTransitionMessagePassing):
         generating_counterfactual = self.config['simulation_metadata']['GENERATING_COUNTERFACTUAL']
         cf_type = self.config['simulation_metadata']['COUNTERFACTUAL_TYPE']
         with_k = self.config['simulation_metadata']['WITH_K']
+        with_vacc = self.config['simulation_metadata']['WITH_VACC']
         
         intervention_df = pd.read_csv(f"{self.config['simulation_metadata']['population_dir']}/intervention.csv")
         curr_intervention = intervention_df[intervention_df['t'] == t]
 
         school_intervention = curr_intervention.iloc[0]['school_intervention']
         occ_intervention = curr_intervention.iloc[0]['occ_intervention']
+        num_vaccines = curr_intervention.iloc[0]['vaccines']
 
         if generating_counterfactual:
             if (t == 0):
@@ -375,7 +406,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
                 elif o_logic != "F":
                     occ_intervention = o_logic
 
-        school_net = self.apply_intervention_fast(school_intervention, self.networks['school'][0])
+        school_net = self.apply_intervention_fast(school_intervention, self.school_net)
         occ_net = self.apply_intervention_fast(occ_intervention, self.networks['occ'][t])
 
         combined_net = torch.cat([
@@ -501,6 +532,9 @@ class NewTransmission(SubstepTransitionMessagePassing):
         daily_infected = daily_infected.squeeze(0)
 
         newly_exposed_today = newly_exposed_today.unsqueeze(1)
+
+        if with_vacc:
+            current_stages = self.apply_vaccines(current_stages, num_vaccines)
 
         daily_deaths = self.update_number_of_dead(daily_deaths, current_stages, agents_next_stage_times, t, newly_exposed_today)
 

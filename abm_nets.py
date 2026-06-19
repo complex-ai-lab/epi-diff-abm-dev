@@ -297,9 +297,22 @@ def eval_net():
     loss_array = np.array([])
     epochs = 251
 
+    CURRICULUM_PHASE_1_EPOCHS = 100
+    VACCINE_ROLLOUT_DAY = 14
+
     for epoch in range(epochs):
         torch.autograd.set_detect_anomaly(True)
         opt.zero_grad()
+
+        if with_vacc:
+            if epoch < CURRICULUM_PHASE_1_EPOCHS:
+                sim.config['simulation_metadata']['WITH_VACC'] = False
+                cutoff_step = None
+            else:
+                sim.config['simulation_metadata']['WITH_VACC'] = True
+                cutoff_step = None
+        else:
+            cutoff_step = None
 
         runner.state = deep_clone_state(initial_state)
         runner.state_trajectory = []
@@ -311,7 +324,7 @@ def eval_net():
         map_and_replace_tensor(learnable_params[3][0])(runner, False, debug_tensor[-2], mode_calibrate=True)
         map_and_replace_tensor(learnable_params[4][0])(runner, False, debug_tensor[-1], mode_calibrate=True)
 
-        loss = execute(sim, runner, case_numbers, epoch, epochs, num_steps)
+        loss = execute(sim, runner, case_numbers, epoch, epochs, num_steps, loss_cutoff_step=cutoff_step)
         loss.backward()
         opt.step()
 
