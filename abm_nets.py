@@ -8,11 +8,6 @@ import matplotlib.pyplot as plt
 import csv
 import pandas as pd
 
-import covid_abm
-from populations import pop01045
-from agent_torch.core.executor import Executor
-from agent_torch.core.dataloader import LoadPopulation
-
 
 class LearnableParams(nn.Module):
     def __init__(self, num_params, context_dim=3, device=DEVICE):
@@ -199,11 +194,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
     
     return total_loss
 
-def eval_net():
-    sim = Executor(covid_abm, pop_loader=LoadPopulation(pop01045))
-    test = sim._get_runner
-    runner = test(sim.config)
-    runner.init()
+def eval_net(sim, runner):
     learnable_params = [(name, param) for (name, param) in runner.named_parameters()]
     
     date = sim.config['simulation_metadata']['DATE']
