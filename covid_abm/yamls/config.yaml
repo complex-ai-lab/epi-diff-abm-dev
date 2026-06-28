@@ -32,6 +32,7 @@ simulation_metadata:
   age_group_file: ${simulation_metadata.population_dir}/age.pickle
   calibration: true
   device: cuda
+  metro_calibration_phase: 0
   disease_stage_file: ${simulation_metadata.population_dir}/disease_stages.csv
   infection_network_file: ${simulation_metadata.population_dir}/mobility_networks/0.csv
   initial_infection_ratio: 0.04

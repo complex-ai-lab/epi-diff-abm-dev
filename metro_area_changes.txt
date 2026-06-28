@@ -1,0 +1,23 @@
+METRO AREA CALIBRATION CHANGES SUMMARY
+======================================
+
+1. config.yaml
+   - Added `metro_calibration_phase: 0` under `simulation_metadata` to default to single-county mode.
+
+2. main.py
+   - Supports command-line input of comma-separated FIPS list (e.g. `01045,01049`).
+   - If 1 FIPS: Configures `metro_calibration_phase` to 0 and runs normal calibration.
+   - If > 1 FIPS: Sequences execution into two loops:
+     - Phase 1 loop: Calibrates each county with `metro_calibration_phase: 1`.
+     - Phase 2 loop: Calibrates each county with `metro_calibration_phase: 2`.
+   - Automatically updates `POPULATION` and `population_dir` config paths dynamically on a per-county basis in memory.
+
+3. abm_nets.py
+   - Training Loop: Dynamically sets `is_final_epoch` in simulation metadata (True during the last epoch).
+   - Result Paths: Appends `_metro_{phase}` suffix to `results/` and `result_graphs/` folders.
+   - Counterfactual parameters: Loads from `_metro_2` directory for metro runs, and `_metro_0` for single-county runs.
+
+4. transition.py (NewTransmission)
+   - Cache Commuters: At t=0, preloads commuter residence mapping from `occnets/` (excluding self-commuters).
+   - Phase 1: At step t, if in Phase 1 final epoch, counts infected commuters and adds/accumulates counts to shared `results/{state_prefix}/{t}.csv` files.
+   - Phase 2: At step t, reads incoming infected commuters from `results/{state_prefix}/{t}.csv`, multiplies by `P` (defined as `potentially_exposed_today.mean()`), adds the count to daily new infections, and exposes the corresponding susceptible agents.

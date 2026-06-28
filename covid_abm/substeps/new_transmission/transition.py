@@ -450,6 +450,25 @@ class NewTransmission(SubstepTransitionMessagePassing):
         if (t == 0):
             current_stages = self.modify_initial_infected(current_stages, initial_infection_rate)
             agents_infected_time, agents_next_stage_times = self.update_initial_times(agents_next_stage_times, agents_infected_time, current_stages)
+            
+            # Load residence commuter mapping for Phase 1 and 2
+            self.commuters = []
+            population = self.config['simulation_metadata']['POPULATION']
+            commute_file = f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{population}_residence_commute_data.txt"
+            if os.path.exists(commute_file):
+                try:
+                    with open(commute_file, 'r') as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                parts = line.split(',')
+                                if len(parts) == 2:
+                                    agent_id = int(parts[0])
+                                    work_county = parts[1].strip()
+                                    if work_county != population:
+                                        self.commuters.append((agent_id, work_county))
+                except Exception as e:
+                    print(f"Warning: Failed to load commuter mapping: {e}")
 
         SFSusceptibility = get_by_path(
             state, re.split("/", input_variables["SFSusceptibility"])
@@ -522,7 +541,38 @@ class NewTransmission(SubstepTransitionMessagePassing):
             current_stages == self.SUSCEPTIBLE_VAR
         ).squeeze() * potentially_exposed_today
 
-        daily_infected = daily_infected + (newly_exposed_today.sum() + 0) * time_step_one_hot
+        metro_phase = self.config['simulation_metadata'].get('metro_calibration_phase', 0)
+        population = self.config['simulation_metadata']['POPULATION']
+        extra_infections = 0.0
+        num_to_expose = 0
+
+        if metro_phase == 2:
+            state_prefix = population[:2]
+            csv_path = f"results/{state_prefix}/{t}.csv"
+            num_incoming_infected = 0.0
+            if os.path.exists(csv_path):
+                try:
+                    df_t = pd.read_csv(csv_path)
+                    row = df_t[df_t['destination_county'].astype(str).str.zfill(5) == population]
+                    if not row.empty:
+                        num_incoming_infected = float(row.iloc[0]['num_infected'])
+                except Exception as e:
+                    pass
+            
+            P = potentially_exposed_today.mean()
+            extra_infections = num_incoming_infected * P
+            
+            if extra_infections > 0:
+                susceptible_indices = (current_stages.squeeze() == self.SUSCEPTIBLE_VAR).nonzero(as_tuple=True)[0]
+                if len(susceptible_indices) > 0:
+                    num_to_expose = min(int(extra_infections), len(susceptible_indices))
+                    if num_to_expose > 0:
+                        perm = torch.randperm(len(susceptible_indices), device=self.device)[:num_to_expose]
+                        selected_indices = susceptible_indices[perm]
+                        newly_exposed_today = newly_exposed_today.clone()
+                        newly_exposed_today[selected_indices] = 1.0
+
+        daily_infected = daily_infected + (newly_exposed_today.sum() + (extra_infections - num_to_expose)) * time_step_one_hot
 
         if with_k:
             k_mask = torch.ones_like(daily_infected)
@@ -550,6 +600,43 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.get_stage_proportions(t, updated_stages)
         self.get_age_stage_proportions(t, updated_stages, agents_ages)
         
+        # Log infected commuter stages in Phase 1 final epoch
+        is_final_epoch = self.config['simulation_metadata'].get('is_final_epoch', False)
+        if metro_phase == 1 and is_final_epoch and hasattr(self, 'commuters') and self.commuters:
+            try:
+                stages_cpu = updated_stages.cpu().detach().numpy().flatten()
+                new_counts = {}
+                for agent_id, work_county in self.commuters:
+                    if stages_cpu[agent_id] == self.INFECTED_VAR:
+                        new_counts[work_county] = new_counts.get(work_county, 0) + 1
+
+                state_prefix = population[:2]
+                metro_dir = f"results/{state_prefix}"
+                os.makedirs(metro_dir, exist_ok=True)
+                csv_path = os.path.join(metro_dir, f"{t}.csv")
+
+                existing_counts = {}
+                if os.path.exists(csv_path):
+                    try:
+                        df_existing = pd.read_csv(csv_path)
+                        for _, row in df_existing.iterrows():
+                            dest = str(row['destination_county']).zfill(5)
+                            num = int(row['num_infected'])
+                            existing_counts[dest] = num
+                    except Exception:
+                        pass
+
+                for dest, num in new_counts.items():
+                    existing_counts[dest] = existing_counts.get(dest, 0) + num
+
+                df_new = pd.DataFrame(
+                    [{'destination_county': dest, 'num_infected': num} for dest, num in existing_counts.items()],
+                    columns=['destination_county', 'num_infected']
+                )
+                df_new.to_csv(csv_path, index=False)
+            except Exception as e:
+                print(f"Warning: Failed to log Phase 1 commuter stages: {e}")
+
         return {
             self.output_variables[0]: updated_stages,
             self.output_variables[1]: updated_next_stage_times,

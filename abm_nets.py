@@ -94,9 +94,10 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
     with_k = sim.config['simulation_metadata']['WITH_K']
     with_vacc = sim.config['simulation_metadata']['WITH_VACC']
 
+    metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
         labels_np = labels.cpu().detach().numpy()
-        output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}'
+        output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
         os.makedirs(output_dir, exist_ok=True)
 
         # Plot comparison if possible
@@ -152,8 +153,9 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
         plt.title(f'Simulation vs Actual Cases in {population}')
         plt.legend()
         
-        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}/{epoch}', exist_ok=True)
-        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}/{epoch}/simulation_results.png')
+        metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
+        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}', exist_ok=True)
+        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}/simulation_results.png')
         plt.close()
 
         trans_substep = runner.initializer.transition_function['0'].new_transmission
@@ -170,11 +172,12 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
                 plt.grid(True)
                 plt.legend()
                 plt.tight_layout()
-                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}/{epoch}/{stage}_proportion.png")
+                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}/{stage}_proportion.png")
                 plt.close()
 
     if epoch == epochs - 1:
-        output_dir = f'results/{population}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}'
+        metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
+        output_dir = f'results/{population}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_metro_{metro_phase}'
         os.makedirs(output_dir, exist_ok=True)
         generated_df = pd.DataFrame({
             "day": list(range(len(Y_sched))),
@@ -228,6 +231,7 @@ def eval_net(sim, runner):
     
     initial_state = deep_clone_state(runner.state)
 
+    metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
         cf_types_to_run = range(7, 11)
 
@@ -241,7 +245,8 @@ def eval_net(sim, runner):
                 runner.state = deep_clone_state(initial_state)
                 runner.state_trajectory = []
 
-                base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}'
+                param_load_phase = 0 if metro_phase == 0 else 2
+                base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{param_load_phase}'
                 param_array = np.loadtxt(os.path.join(base_dir, "calibrated_params.txt"))
                 param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
                 param_tensor = param_tensor[:, None] if param_tensor.ndim == 1 else param_tensor
@@ -258,7 +263,7 @@ def eval_net(sim, runner):
                 _ = execute(sim, runner, case_numbers, epoch=0, epochs=1, n_steps=num_steps)
 
                 substep = runner.initializer.transition_function['0'].new_transmission
-                output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}'
+                output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{param_load_phase}'
                 path = f'{output_dir}/counterfactual_data{cf_type}_proportions.csv'
 
                 if num_iterations > 1:
@@ -292,6 +297,7 @@ def eval_net(sim, runner):
     VACCINE_ROLLOUT_DAY = 14
 
     for epoch in range(epochs):
+        sim.config['simulation_metadata']['is_final_epoch'] = (epoch == epochs - 1)
         torch.autograd.set_detect_anomaly(True)
         opt.zero_grad()
 
@@ -324,7 +330,7 @@ def eval_net(sim, runner):
 
         if epoch == epochs - 1:
             substep = runner.initializer.transition_function['0'].new_transmission
-            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}'
+            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
             path = f'{output_dir}/training_proportions.csv'
             substep.save_proportions_to_disk(path)
             np.savetxt(os.path.join(output_dir, "calibrated_params.txt"), debug_tensor.detach().cpu().numpy(), fmt="%.6f")
@@ -332,7 +338,7 @@ def eval_net(sim, runner):
     iters = np.arange(1, epochs + 1)
     data = np.column_stack((iters, loss_array))
 
-    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}'
+    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
     with open(os.path.join(output_dir, "training_loss.csv"), mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Iteration', 'Task Loss'])
