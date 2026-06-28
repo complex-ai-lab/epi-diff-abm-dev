@@ -1,3 +1,4 @@
 .env
 networks/__pycache__
 __pycache__
+networks/commuter_networks/commute_data/formatted_residence_commute_data.csv

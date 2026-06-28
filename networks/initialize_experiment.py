@@ -148,6 +148,14 @@ if to_pickle_string != "yes" and to_pickle_string != "no":
 
 to_pickle = to_pickle_string == "yes"
 
+track_commutes_string = input("Track worker commutes? (yes/no): ").strip().lower()
+
+if track_commutes_string != "yes" and track_commutes_string != "no":
+    print("Error: Invalid input for track worker commutes")
+    exit(1)
+
+track_commutes = track_commutes_string == "yes"
+
 
 for fips_code in tqdm(target_counties, desc="Processing Counties", unit="county"):
     county_path = os.path.join(base_dir, fips_code)
@@ -158,7 +166,7 @@ for fips_code in tqdm(target_counties, desc="Processing Counties", unit="county"
     if not os.path.exists(memory_path):
         open(memory_path, "w").close()
     print("-----------------------------------------------------------------")
-    generate_mobility_networks(state_abbrev=state_abbrev, county=fips_code, output_dir=county_path, num_steps=num_steps, ages_list=county_to_ageslist_dict[fips_code], to_pickle=to_pickle)
+    generate_mobility_networks(state_abbrev=state_abbrev, county=fips_code, output_dir=county_path, num_steps=num_steps, ages_list=county_to_ageslist_dict[fips_code], to_pickle=to_pickle, track_commutes=track_commutes)
     print("-----------------------------------------------------------------")
 
 print()

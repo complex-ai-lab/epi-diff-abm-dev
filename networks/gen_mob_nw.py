@@ -9,9 +9,10 @@ from sim_gen_utils import custom_watts_strogatz_graph, normal_watts_strogatz_gra
 from isolate_county_data import get_dataframes_dict
 from random_networks import create_and_write_random_networks
 from tqdm import tqdm
+from commuter_networks.commute_data_utils import track_commute_data
 
 
-def generate_mobility_networks(state_abbrev, county, output_dir, num_steps, ages_list, to_pickle):
+def generate_mobility_networks(state_abbrev, county, output_dir, num_steps, ages_list, to_pickle, track_commutes=False):
     print(f"County {county}:")
 
     mobility_dir = os.path.join(output_dir, "mobility_networks")
@@ -22,6 +23,10 @@ def generate_mobility_networks(state_abbrev, county, output_dir, num_steps, ages
     agent_data_path = f"population_data/{state_abbrev}_population_data/{county}_population.csv"
     agent_data_path_dir = os.path.join(data_dir, agent_data_path)
     individuals = pd.read_csv(agent_data_path_dir)
+    
+    if track_commutes:
+        track_commute_data(individuals, state_abbrev, county, output_dir)
+        
     num_agents = individuals.shape[0]
 
     # Load network parameters
