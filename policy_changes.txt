@@ -1,0 +1,11 @@
+POLICY CHANGES SUMMARY
+====================================
+
+scripts/process_counties.py
+   - County-Level Policy Database (ICPSR 39109):
+     - Loads the `data/county_policy_data/39109-0001-Data.tsv` database globally.
+     - Resolves the school and occupation policies for each target county:
+       - Checks for county-level policies (`C1_SCHOOL` and `C2_WORKPLACE`) with state-level fallbacks if individual fields are missing (`99`).
+       - Falls back to state-level policies (`S_C1_SCHOOL` and `S_C2_WORKPLACE`) for the state of interest (e.g. `'OH'`) if the target county is not tracked in the database.
+       - Maps OxCGRT severity levels into binary (`0` or `1`) intervention markers (mapping levels `0, 1` to `0`, and `2, 3` to `1`).
+       - Interpolates the weekly policy mandates into a daily timeline matching the simulation's dates range and writes them to the county's `intervention.csv` file.

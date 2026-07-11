@@ -10,6 +10,17 @@ target_counties = [
     '39013', '39081'
 ]
 
+# Load county policy database globally to avoid reloading it for each county
+policy_db_path = os.path.join(os.path.dirname(__file__), "..", "data", "county_policy_data", "39109-0001-Data.tsv")
+if os.path.exists(policy_db_path):
+    print("Loading county policy database...")
+    policy_db = pd.read_csv(policy_db_path, sep="\t")
+    policy_db["WEEK_START_DATE"] = pd.to_datetime(policy_db["WEEK_START_DATE"], format="%d-%b-%Y")
+    policy_db["WEEK_END_DATE"] = pd.to_datetime(policy_db["WEEK_END_DATE"], format="%d-%b-%Y")
+else:
+    print(f"Warning: County policy database not found at {policy_db_path}")
+    policy_db = None
+
 def process_fips_data(fips_code):
     # Define paths
     project_root = os.path.join(os.path.dirname(__file__), "..")
@@ -51,10 +62,14 @@ def process_fips_data(fips_code):
         df = pd.read_csv(input_daily_path, parse_dates=["time_value"])
         df = df[df["time_value"].dt.year.isin([2020, 2021])]
         df = df[["time_value", "cases", "deaths"]].rename(columns={"time_value": "date"})
+        df = df.sort_values("date").reset_index(drop=True)
 
         # Fix negative values
         df["cases"]  = fix_negative(df["cases"])
         df["deaths"] = fix_negative(df["deaths"])
+
+        # Compute 7-day sliding window average for cases (3 days before, actual day, 3 days after)
+        df["cases"] = df["cases"].rolling(window=7, center=True, min_periods=1).mean()
 
         # Aggregate weekly on full data
         df["week"] = df["date"].dt.to_period("W").apply(lambda r: r.start_time)
@@ -158,30 +173,63 @@ def create_county_folder(state_abbrev, fips_code):
     dates = pd.date_range(start_date, periods=182, freq='D')
     interventions_df = pd.DataFrame({"date": dates})
 
-    policy = pd.read_csv("data/202436_w_policy2.csv")
-    policy["end_date"] = pd.to_datetime(policy["end_date"])
-    state_policy = policy[policy["region"] == state_abbrev].copy()
+    fips_int = int(fips_code)
+    county_policy = None
+    county_policy_found = False
 
-    # ensure sorted by date
-    state_policy.sort_values("end_date", inplace=True)
-    state_policy.reset_index(drop=True, inplace=True)
+    if policy_db is not None:
+        # 1. Try to find county-level data in the policy database
+        county_policy = policy_db[policy_db["COUNTY_FIPS"] == fips_int].copy()
+        if len(county_policy) > 0:
+            county_policy = county_policy.sort_values("WEEK_START_DATE").reset_index(drop=True)
+            county_policy_found = True
+            print(f"Using county-level policy data for FIPS {fips_code}")
 
-    def map_intervention(x):
-        return 0 if x in [0,1] else 1
+    if not county_policy_found:
+        print(f"FIPS {fips_code} not found in county policy database. Falling back to state-level policies for {state_abbrev}.")
+        # 2. Fallback: Filter by state and group by week to get state-level mandates
+        if policy_db is not None:
+            state_policy = policy_db[policy_db["STATE"] == state_abbrev].copy()
+            state_policy = state_policy.sort_values("WEEK_START_DATE").reset_index(drop=True)
+            county_policy = state_policy.groupby("WEEK_START_DATE", as_index=False).first()
 
-    # For each daily date, find the weekly row whose end_date >= date
+    def map_intervention_val(val):
+        if pd.isna(val) or val in [99, 77]:
+            return 0
+        return 0 if val in [0, 1] else 1
+
     school_vals = []
     occ_vals = []
 
     for d in interventions_df["date"]:
-        row = state_policy[state_policy["end_date"] >= d]
-        if len(row) == 0:
+        if county_policy is not None and len(county_policy) > 0:
+            # Find the week matching this day
+            week_row = county_policy[(county_policy["WEEK_START_DATE"] <= d) & (county_policy["WEEK_END_DATE"] >= d)]
+            if len(week_row) > 0:
+                row = week_row.iloc[0]
+                
+                if county_policy_found:
+                    # Use county-level columns, fallback to state-level only if missing (99)
+                    school_val = row["C1_SCHOOL"]
+                    if pd.isna(school_val) or school_val == 99:
+                        school_val = row["S_C1_SCHOOL"]
+                    
+                    occ_val = row["C2_WORKPLACE"]
+                    if pd.isna(occ_val) or occ_val == 99:
+                        occ_val = row["S_C2_WORKPLACE"]
+                else:
+                    # State-level fallback: directly use state columns
+                    school_val = row["S_C1_SCHOOL"]
+                    occ_val = row["S_C2_WORKPLACE"]
+                
+                school_vals.append(map_intervention_val(school_val))
+                occ_vals.append(map_intervention_val(occ_val))
+            else:
+                school_vals.append(0)
+                occ_vals.append(0)
+        else:
             school_vals.append(0)
             occ_vals.append(0)
-        else:
-            row = row.iloc[0]
-            school_vals.append(map_intervention(row["C1_School closing"]))
-            occ_vals.append(map_intervention(row["C2_Workplace closing"]))
 
     interventions_df["school_intervention"] = school_vals
     interventions_df["occ_intervention"] = occ_vals

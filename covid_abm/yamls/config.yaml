@@ -44,11 +44,11 @@ simulation_metadata:
     model_path: saved_model.pth
   mapping_path: ${simulation_metadata.population_dir}/population_mapping.json
   metro_calibration_phase: 0
-  num_agents: 60895
+  num_agents: 58106
   num_episodes: 5
   num_steps_per_episode: 182
   num_substeps_per_step: 1
-  population_dir: /home/facundoy/research/epi-diff-abm-dev/populations/pop39081
+  population_dir: /home/facundoy/research/epi-diff-abm-dev/populations/pop39013
   quarantine_days: 12
   test_ineligible_days: 2
   test_result_delay_days: 3
