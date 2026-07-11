@@ -15,20 +15,21 @@ def run_county_phase(fips_code, phase):
         print(f"Error: Population module populations.pop{fips_code} not found.")
         sys.exit(1)
         
-    # Configure simulation metadata in-memory for this FIPS and phase
-    covid_abm.config['simulation_metadata']['metro_calibration_phase'] = phase
-    covid_abm.config['simulation_metadata']['POPULATION'] = fips_code
-    
-    # Update the population directory to point to the current FIPS code folder
-    original_pop_dir = covid_abm.config['simulation_metadata']['population_dir']
-    parent_dir = os.path.dirname(original_pop_dir)
-    covid_abm.config['simulation_metadata']['population_dir'] = os.path.join(parent_dir, f"pop{fips_code}")
-
     print(f"\n=======================================================")
     print(f"Running FIPS {fips_code} | Metro Calibration Phase {phase}")
     print(f"=======================================================")
     
     sim = Executor(covid_abm, pop_loader=LoadPopulation(pop_module))
+    
+    # Configure simulation metadata in-memory for this FIPS and phase
+    sim.config['simulation_metadata']['metro_calibration_phase'] = phase
+    sim.config['simulation_metadata']['POPULATION'] = fips_code
+    
+    # Update the population directory to point to the current FIPS code folder
+    original_pop_dir = sim.config['simulation_metadata']['population_dir']
+    parent_dir = os.path.dirname(original_pop_dir)
+    sim.config['simulation_metadata']['population_dir'] = os.path.join(parent_dir, f"pop{fips_code}")
+    
     runner = sim._get_runner(sim.config)
     runner.init()
     

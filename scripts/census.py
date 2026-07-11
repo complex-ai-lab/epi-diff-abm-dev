@@ -13,9 +13,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-state = 'AL'
+state = 'OH'
 target_counties = [
-    '01045',
+    '39013', '39081'
 ]
 
 

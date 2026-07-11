@@ -5,9 +5,9 @@ import json
 import requests
 from io import StringIO
 
-state = 'AL'
+state = 'OH'
 target_counties = [
-    '01045',
+    '39013', '39081'
 ]
 
 def process_fips_data(fips_code):
@@ -185,6 +185,35 @@ def create_county_folder(state_abbrev, fips_code):
 
     interventions_df["school_intervention"] = school_vals
     interventions_df["occ_intervention"] = occ_vals
+
+    # Vaccination Data
+    fips_str = str(fips_code).zfill(5)
+    url = (
+        "https://data.cdc.gov/resource/8xkx-amqh.csv?"
+        f"$select=date,fips,administered_dose1_recip"
+        f"&fips={fips_str}"
+        f"&$limit=50000"
+    )
+    
+    response = requests.get(url)
+    if response.status_code != 200:
+        interventions_df["vaccines"] = 0
+    else:
+        cdc_df = pd.read_csv(StringIO(response.text))
+        cdc_df["date"] = pd.to_datetime(cdc_df["date"])
+        
+        cdc_df["fips"] = cdc_df["fips"].astype(str).str.zfill(5)
+        cdc_df = cdc_df[cdc_df["fips"] == fips_str].copy()
+
+        cdc_df.sort_values("date", inplace=True)
+        cdc_df["new_vax"] = cdc_df["administered_dose1_recip"].diff().fillna(0)
+
+        merged = interventions_df.merge(
+            cdc_df[["date", "new_vax"]],
+            on="date",
+            how="left"
+        )
+        interventions_df["vaccines"] = merged["new_vax"].fillna(0).values
 
     # convert date to string for output
     interventions_df["date"] = interventions_df["date"].dt.strftime("%Y-%m-%d")

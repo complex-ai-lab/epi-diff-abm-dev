@@ -216,6 +216,17 @@ def eval_net(sim, runner):
 
     context_tensor = torch.tensor([initial_rate, exposed_to_infected, infected_to_recovered], dtype=torch.float, device=DEVICE)
     learn_model = LearnableParams(num_weeks, context_dim=3, device=DEVICE)
+    
+    metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
+    if metro_phase == 2:
+        phase1_results_dir = f'results/{population}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_metro_1'
+        model_path = os.path.join(phase1_results_dir, "calibrated_model.pt")
+        if os.path.exists(model_path):
+            print(f"Loading Phase 1 weights from {model_path}...")
+            learn_model.load_state_dict(torch.load(model_path, map_location=DEVICE))
+        else:
+            print(f"Warning: Phase 1 weights not found at {model_path}. Starting calibration from scratch.")
+            
     learn_model = torch.compile(learn_model)
 
     def deep_clone_state(state):
@@ -334,6 +345,14 @@ def eval_net(sim, runner):
             path = f'{output_dir}/training_proportions.csv'
             substep.save_proportions_to_disk(path)
             np.savetxt(os.path.join(output_dir, "calibrated_params.txt"), debug_tensor.detach().cpu().numpy(), fmt="%.6f")
+            
+            if metro_phase == 1:
+                results_dir = f'results/{population}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_metro_1'
+                os.makedirs(results_dir, exist_ok=True)
+                model_path = os.path.join(results_dir, "calibrated_model.pt")
+                print(f"Saving Phase 1 weights to {model_path}...")
+                state_to_save = learn_model._orig_mod.state_dict() if hasattr(learn_model, '_orig_mod') else learn_model.state_dict()
+                torch.save(state_to_save, model_path)
 
     iters = np.arange(1, epochs + 1)
     data = np.column_stack((iters, loss_array))

@@ -5,4 +5,5 @@ no
 full
 182
 yes
+yes
 INPUT

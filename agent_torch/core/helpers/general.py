@@ -104,13 +104,14 @@ def read_config(config_file, register_resolvers=True):
         ]
 
         for name, func in resolvers:
-            try:
-                OmegaConf.register_new_resolver(name, func)
-            except AssertionError as e:
-                if "is already registered" in str(e):
-                    continue
-                else:
-                    raise e
+            if not OmegaConf.has_resolver(name):
+                try:
+                    OmegaConf.register_new_resolver(name, func)
+                except (AssertionError, ValueError) as e:
+                    if "already registered" in str(e):
+                        continue
+                    else:
+                        raise e
 
     if config_file[-5:] != ".yaml":
         raise ValueError("Config file type should be yaml")

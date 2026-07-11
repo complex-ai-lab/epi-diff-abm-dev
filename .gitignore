@@ -1,4 +1,18 @@
 .env
-networks/__pycache__
-__pycache__
+__pycache__/
+*.pyc
+networks/__pycache__/
 networks/commuter_networks/commute_data/formatted_residence_commute_data.csv
+
+# Generated data
+data/delphi_county_data/
+data/networks/
+data/population_data/
+data/processed_data/
+data/state_data/
+
+# Generated networks and experiment output
+networks/*.pkl
+populations/
+result_graphs/
+results/

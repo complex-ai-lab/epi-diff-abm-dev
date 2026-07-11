@@ -11,9 +11,9 @@ from gen_mob_nw import generate_mobility_networks
 from custom_population import customize
 
 
-state_abbrev = 'AL'
+state_abbrev = 'OH'
 target_counties = [
-    '01045',
+    '39013', '39081'
 ]
 
 

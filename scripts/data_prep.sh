@@ -15,6 +15,7 @@ yes
 test
 1
 no
+no
 INPUT
 cd ..
 
