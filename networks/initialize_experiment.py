@@ -11,10 +11,14 @@ from gen_mob_nw import generate_mobility_networks
 from custom_population import customize
 
 
-state_abbrev = 'OH'
-target_counties = [
-    '39013', '39081'
-]
+state_abbrev = os.getenv("TARGET_STATE", "OH")
+target_counties_env = os.getenv("TARGET_COUNTIES")
+if target_counties_env:
+    target_counties = [c.strip() for c in target_counties_env.split(",") if c.strip()]
+else:
+    target_counties = [
+        '39013', '39081'
+    ]
 
 
 state_dict = {
@@ -111,16 +115,29 @@ if experiment_type != "full" and experiment_type != "test":
 
 
 
+from dotenv import load_dotenv
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(project_root, '.env'))
+networks_dir = os.getenv("NETWORKS_DIR")
+
 if experiment_type == "full":
-
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'networks')
-    output_dir = os.path.join(data_dir, "covid_output_causal")
-
+    if networks_dir:
+        if not os.path.isabs(networks_dir):
+            output_dir = os.path.join(project_root, networks_dir)
+        else:
+            output_dir = networks_dir
+    else:
+        data_dir = os.path.join(project_root, 'data', 'networks')
+        output_dir = os.path.join(data_dir, "covid_output_causal")
 else:
     assert experiment_type == "test"
-
-    data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'networks')
-    output_dir = os.path.join(data_dir, "test_output")
+    if networks_dir:
+        if not os.path.isabs(networks_dir):
+            networks_dir = os.path.join(project_root, networks_dir)
+        output_dir = os.path.join(os.path.dirname(networks_dir), "test_output")
+    else:
+        data_dir = os.path.join(project_root, 'data', 'networks')
+        output_dir = os.path.join(data_dir, "test_output")
 
 base_dir = output_dir
 

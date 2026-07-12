@@ -13,10 +13,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-state = 'OH'
-target_counties = [
-    '39013', '39081'
-]
+state = os.getenv("TARGET_STATE", "OH")
+target_counties_env = os.getenv("TARGET_COUNTIES")
+if target_counties_env:
+    target_counties = [c.strip() for c in target_counties_env.split(",") if c.strip()]
+else:
+    target_counties = [
+        '39013', '39081'
+    ]
 
 
 def obtain_household_size_distribution(state, county_fips, census_api_key):

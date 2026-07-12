@@ -29,9 +29,20 @@ class NewTransmission(SubstepTransitionMessagePassing):
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         self.data_dir = os.path.join(project_root, 'data')
 
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(project_root, '.env'))
+        networks_dir_env = os.getenv("NETWORKS_DIR")
+        if networks_dir_env:
+            if not os.path.isabs(networks_dir_env):
+                self.networks_dir = os.path.join(project_root, networks_dir_env)
+            else:
+                self.networks_dir = networks_dir_env
+        else:
+            self.networks_dir = os.path.join(self.data_dir, 'networks', 'covid_output_causal')
+
         self.networks = self._preload_all_networks()
-        self.household_net = self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/HOUSEHOLD_NETWORK.pkl")
-        self.school_net = self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/SCHOOL_NETWORK.pkl")
+        self.household_net = self._load_single_net(f"{self.networks_dir}/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/HOUSEHOLD_NETWORK.pkl")
+        self.school_net = self._load_single_net(f"{self.networks_dir}/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/SCHOOL_NETWORK.pkl")
         self.proportion_history = []
         self.age_proportion_history = []
 
@@ -284,8 +295,8 @@ class NewTransmission(SubstepTransitionMessagePassing):
         nets = {'occ': [], 'rand': []}
         population = self.config['simulation_metadata']['POPULATION']
         for t in range(self.num_timesteps):
-            nets['occ'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{t}.pkl"))
-            nets['rand'].append(self._load_single_net(f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/randnets/{t}.pkl"))
+            nets['occ'].append(self._load_single_net(f"{self.networks_dir}/{population}/mobility_networks/occnets/{t}.pkl"))
+            nets['rand'].append(self._load_single_net(f"{self.networks_dir}/{population}/mobility_networks/randnets/{t}.pkl"))
         return nets
 
     def apply_intervention_fast(self, intervention, edges):
@@ -454,7 +465,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
             # Load residence commuter mapping for Phase 1 and 2
             self.commuters = []
             population = self.config['simulation_metadata']['POPULATION']
-            commute_file = f"{self.data_dir}/networks/covid_output_causal/{population}/mobility_networks/occnets/{population}_residence_commute_data.txt"
+            commute_file = f"{self.networks_dir}/{population}/mobility_networks/occnets/{population}_residence_commute_data.txt"
             if os.path.exists(commute_file):
                 try:
                     with open(commute_file, 'r') as f:

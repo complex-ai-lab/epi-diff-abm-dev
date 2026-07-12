@@ -5,10 +5,14 @@ import json
 import requests
 from io import StringIO
 
-state = 'OH'
-target_counties = [
-    '39013', '39081'
-]
+state = os.getenv("TARGET_STATE", "OH")
+target_counties_env = os.getenv("TARGET_COUNTIES")
+if target_counties_env:
+    target_counties = [c.strip() for c in target_counties_env.split(",") if c.strip()]
+else:
+    target_counties = [
+        '39013', '39081'
+    ]
 
 # Load county policy database globally to avoid reloading it for each county
 policy_db_path = os.path.join(os.path.dirname(__file__), "..", "data", "county_policy_data", "39109-0001-Data.tsv")

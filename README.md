@@ -23,6 +23,7 @@ pip install -r requirements.txt
 The data preparation scripts require access to external APIs. Create a `.env` file in the root directory with the following keys:
 *   `COVIDCAST_API_KEY`: Required for the [Delphi COVIDcast API](https://cmu-delphi.github.io/delphi-epidata/api/covidcast_clients.html) to fetch epidemiological data.
 *   `CENSUS_API_KEY`: Required for the [US Census Bureau API](https://api.census.gov/data/key_signup.html) to fetch demographic distributions.
+*   `NETWORKS_DIR`: Optional (defaults to `data/networks/covid_output_causal`). The directory path where generated mobility networks are stored and loaded from.
 
 ## How to run
 

@@ -9,9 +9,13 @@ load_dotenv()
 #################################################################
 #################################################################
 
-target_counties = [
-    '39013', '39081'
-]
+target_counties_env = os.getenv("TARGET_COUNTIES")
+if target_counties_env:
+    target_counties = [c.strip() for c in target_counties_env.split(",") if c.strip()]
+else:
+    target_counties = [
+        '39013', '39081'
+    ]
 
 # query covidcast API for data
 # Note:
