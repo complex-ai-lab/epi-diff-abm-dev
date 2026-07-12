@@ -61,8 +61,11 @@ if user_input == "yes":
     print("-----------------------------------------------------------------")
     print()
 
-    # Reset ages list dictionary for new population
-    county_to_ageslist_dict = {}
+    # Clear counties belonging to the current state to allow clean customization
+    state_code_to_clear = state_dict[state_abbrev]
+    keys_to_remove = [k for k in county_to_ageslist_dict.keys() if int(k[:2]) == state_code_to_clear]
+    for k in keys_to_remove:
+        del county_to_ageslist_dict[k]
 
     #Data Directory
     county_data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), f'data/state_data/{state_abbrev}')
