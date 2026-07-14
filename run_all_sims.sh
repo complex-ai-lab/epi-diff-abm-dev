@@ -13,7 +13,7 @@
 #SBATCH --mem=47G
 #SBATCH --time=36:00:00
 #SBATCH --partition=alrodri-a100
-#SBATCH --array=0-153%3
+#SBATCH --array=0-152%3
 #SBATCH --output=/home/%u/%x-%A-%a.log
 
 # List of counties hardcoded in run_all_networks.py/run_all_prep.py
