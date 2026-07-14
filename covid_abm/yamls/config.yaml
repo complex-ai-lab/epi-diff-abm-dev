@@ -28,7 +28,7 @@ simulation_metadata:
   USE_GROUND_TRUTH_CASE_NUMBERS: false
   USE_PICKLE: false
   WITH_K: true
-  WITH_VACC: false
+  WITH_VACC: true
   age_group_file: ${simulation_metadata.population_dir}/age.pickle
   calibration: true
   device: cuda
