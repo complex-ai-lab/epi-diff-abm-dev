@@ -138,7 +138,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
 
         return 0.0
 
-    if epoch % 50 == 0:
+    if epoch % 50 == 0 or epoch == epochs - 1:
         county_data = pd.read_csv(f"data/processed_data/{population}/{date}/daily_data.csv", parse_dates=['date'])
         county_cases = torch.tensor(county_data['cases'].values[:n_steps], dtype=torch.float)
         
@@ -302,7 +302,7 @@ def eval_net(sim, runner):
 
     opt = optim.Adam(learn_model.parameters(), lr=0.0005)
     loss_array = np.array([])
-    epochs = 251
+    epochs = 501
 
     CURRICULUM_PHASE_1_EPOCHS = 100
     VACCINE_ROLLOUT_DAY = 14

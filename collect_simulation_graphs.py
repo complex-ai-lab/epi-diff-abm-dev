@@ -82,8 +82,8 @@ def main():
     missing_count = 0
 
     for county in COUNTIES:
-        # Check standard last epoch folder '250', if not found, we scan for other numbers (e.g. 200, 150, 100, 50, 0)
-        epochs_to_check = [250, 200, 150, 100, 50, 0]
+        # Check standard last epoch folders (500 for 500-epoch runs, 250 for 250-epoch runs)
+        epochs_to_check = [500, 499, 250, 200, 150, 100, 50, 0]
         
         # Build list of potential directory options to check in case parameters changed slightly
         # (e.g., WITH_VACC was set to False in some runs)
