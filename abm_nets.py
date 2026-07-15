@@ -302,7 +302,7 @@ def eval_net(sim, runner):
 
     opt = optim.Adam(learn_model.parameters(), lr=0.0005)
     loss_array = np.array([])
-    epochs = 501
+    epochs = 251
 
     CURRICULUM_PHASE_1_EPOCHS = 100
     VACCINE_ROLLOUT_DAY = 14
