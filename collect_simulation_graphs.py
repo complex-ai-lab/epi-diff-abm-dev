@@ -10,6 +10,7 @@ covid_abm/yamls/config.yaml, and copies them to the 'all_simulation_results' fol
 import os
 import shutil
 import yaml
+import glob
 
 # Hardcoded list of all 153 counties from run_all_sims.sh
 COUNTIES = [
@@ -60,11 +61,7 @@ def main():
     exposed_to_infected = meta.get("EXPOSED_TO_INFECTED_TIME", 3)
     infected_to_recovered = meta.get("INFECTED_TO_RECOVERED_TIME", 5)
     with_k = meta.get("WITH_K", True)
-    with_vacc = meta.get("WITH_VACC", True)
     metro_phase = meta.get("metro_calibration_phase", 0)
-
-    # Format parameter folder name
-    param_folder = f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}"
 
     print("--- Simulation Parameters Detected ---")
     print(f"Date:                  {date}")
@@ -72,93 +69,99 @@ def main():
     print(f"Exposed to Infected:   {exposed_to_infected}")
     print(f"Infected to Recovered: {infected_to_recovered}")
     print(f"With K:                {with_k}")
-    print(f"With Vaccine:          {with_vacc}")
     print(f"Metro Calibration Phase:{metro_phase}")
-    print(f"Parameter Folder:      {param_folder}")
     print(f"Destination Directory:  {dest_dir}")
     print("---------------------------------------\n")
 
     copied_count = 0
     missing_count = 0
 
+    # Define the three targets we want to pull per county
+    targets = [
+        {"with_vacc": True, "epoch": 250},
+        {"with_vacc": True, "epoch": 500},
+        {"with_vacc": False, "epoch": 250}
+    ]
+
     for county in COUNTIES:
-        # Check standard last epoch folders (500 for 500-epoch runs, 250 for 250-epoch runs)
-        epochs_to_check = [500, 499, 250, 200, 150, 100, 50, 0]
-        
-        # Build list of potential directory options to check in case parameters changed slightly
-        # (e.g., WITH_VACC was set to False in some runs)
-        potential_param_folders = [
-            param_folder,
-            # Fallbacks with different WITH_VACC/WITH_K boolean variants
-            f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_False_metro_{metro_phase}",
-            f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_True_metro_{metro_phase}",
-            f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_False_False_metro_{metro_phase}"
-        ]
-        
-        # Remove duplicates while preserving order
-        unique_param_folders = []
-        for pf in potential_param_folders:
-            if pf not in unique_param_folders:
-                unique_param_folders.append(pf)
-
-        found = False
-        for pf in unique_param_folders:
-            for epoch in epochs_to_check:
-                src_path = os.path.join(
-                    "result_graphs",
-                    county,
-                    date,
-                    pf,
-                    str(epoch),
-                    "simulation_results.png"
-                )
-
-                if os.path.exists(src_path):
-                    dest_filename = f"{county}_simulation_results.png"
-                    dest_path = os.path.join(dest_dir, dest_filename)
-                    shutil.copy2(src_path, dest_path)
-                    print(f"[{county}] Copied from epoch {epoch} run folder '{pf}'")
-                    copied_count += 1
-                    found = True
-                    break
-            if found:
-                break
-
-        if not found:
-            # Final attempt: try glob search in case the parameters are completely different
-            import glob
-            fallback_pattern = os.path.join("result_graphs", county, date, "*", "*", "simulation_results.png")
-            matches = glob.glob(fallback_pattern)
+        for target in targets:
+            vacc_val = target["with_vacc"]
+            epoch_val = target["epoch"]
+            vacc_str = str(vacc_val)
             
-            if matches:
-                # Find the match with the highest epoch number
-                highest_epoch = -1
-                best_match = None
-                for match in matches:
-                    parts = match.split(os.sep)
-                    try:
-                        epoch_val = int(parts[-2])
-                        if epoch_val > highest_epoch:
-                            highest_epoch = epoch_val
-                            best_match = match
-                    except ValueError:
-                        continue
+            found_target = False
+            
+            # Check standard and fallback phases
+            phases_to_check = [metro_phase] + [p for p in [2, 1, 0] if p != metro_phase]
+            # Check potential epochs (e.g., [250, 249] or [500, 499])
+            epochs_to_check = [epoch_val, epoch_val - 1]
+            
+            # Try constructing exact paths with potential variations of WITH_K
+            k_values = [with_k]
+            if with_k is not None:
+                k_values.append(not with_k)
                 
-                if best_match:
-                    dest_filename = f"{county}_simulation_results.png"
-                    dest_path = os.path.join(dest_dir, dest_filename)
-                    shutil.copy2(best_match, dest_path)
-                    print(f"[{county}] Copied (fallback glob) from epoch {highest_epoch}")
-                    copied_count += 1
-                    found = True
-
-            if not found:
-                print(f"[{county}] WARNING: No simulation_results.png found under standard paths.")
+            for k_val in k_values:
+                for phase in phases_to_check:
+                    pf = f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_metro_{phase}"
+                    for ep in epochs_to_check:
+                        src_path = os.path.join(
+                            "result_graphs",
+                            county,
+                            date,
+                            pf,
+                            str(ep),
+                            "simulation_results.png"
+                        )
+                        if os.path.exists(src_path):
+                            dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}.png"
+                            dest_path = os.path.join(dest_dir, dest_filename)
+                            shutil.copy2(src_path, dest_path)
+                            print(f"[{county}] Copied for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
+                            copied_count += 1
+                            found_target = True
+                            break
+                    if found_target:
+                        break
+                if found_target:
+                    break
+            
+            # Final attempt: try glob search in case other parameters are completely different
+            if not found_target:
+                for ep in epochs_to_check:
+                    glob_pattern = os.path.join(
+                        "result_graphs",
+                        county,
+                        date,
+                        f"*_{vacc_str}_metro_*",
+                        str(ep),
+                        "simulation_results.png"
+                    )
+                    matches = glob.glob(glob_pattern)
+                    if matches:
+                        src_path = matches[0]
+                        dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}.png"
+                        dest_path = os.path.join(dest_dir, dest_filename)
+                        shutil.copy2(src_path, dest_path)
+                        
+                        # Extract the parameter folder name from path
+                        parts = src_path.split(os.sep)
+                        pf = parts[-3]
+                        
+                        print(f"[{county}] Copied (glob) for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
+                        copied_count += 1
+                        found_target = True
+                        break
+                        
+            if not found_target:
+                # To avoid overwhelming output, we only print if the county has other folders/results
+                # or we can print normally
+                print(f"[{county}] WARNING: No simulation_results.png found for target (vacc={vacc_str}, epoch={epoch_val})")
                 missing_count += 1
 
     print(f"\nDone! Successfully collected {copied_count} graphs.")
     if missing_count > 0:
-        print(f"Notice: {missing_count} counties did not have completed simulation graphs.")
+        print(f"Notice: {missing_count} targets were missing.")
 
 if __name__ == "__main__":
     main()
