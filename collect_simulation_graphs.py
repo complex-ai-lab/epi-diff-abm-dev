@@ -62,6 +62,7 @@ def main():
     infected_to_recovered = meta.get("INFECTED_TO_RECOVERED_TIME", 5)
     with_k = meta.get("WITH_K", True)
     metro_phase = meta.get("metro_calibration_phase", 0)
+    use_7day_avg = meta.get("USE_7DAY_AVG", True)
 
     print("--- Simulation Parameters Detected ---")
     print(f"Date:                  {date}")
@@ -70,6 +71,7 @@ def main():
     print(f"Infected to Recovered: {infected_to_recovered}")
     print(f"With K:                {with_k}")
     print(f"Metro Calibration Phase:{metro_phase}")
+    print(f"Use 7-Day Average:     {use_7day_avg}")
     print(f"Destination Directory:  {dest_dir}")
     print("---------------------------------------\n")
 
@@ -103,23 +105,29 @@ def main():
                 
             for k_val in k_values:
                 for phase in phases_to_check:
-                    pf = f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_metro_{phase}"
-                    for ep in epochs_to_check:
-                        src_path = os.path.join(
-                            "result_graphs",
-                            county,
-                            date,
-                            pf,
-                            str(ep),
-                            "simulation_results.png"
-                        )
-                        if os.path.exists(src_path):
-                            dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}.png"
-                            dest_path = os.path.join(dest_dir, dest_filename)
-                            shutil.copy2(src_path, dest_path)
-                            print(f"[{county}] Copied for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
-                            copied_count += 1
-                            found_target = True
+                    folder_options = [
+                        f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_{use_7day_avg}_metro_{phase}",
+                        f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_metro_{phase}"
+                    ]
+                    for pf in folder_options:
+                        for ep in epochs_to_check:
+                            src_path = os.path.join(
+                                "result_graphs",
+                                county,
+                                date,
+                                pf,
+                                str(ep),
+                                "simulation_results.png"
+                            )
+                            if os.path.exists(src_path):
+                                dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}_use_7day_avg_{use_7day_avg}.png"
+                                dest_path = os.path.join(dest_dir, dest_filename)
+                                shutil.copy2(src_path, dest_path)
+                                print(f"[{county}] Copied for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
+                                copied_count += 1
+                                found_target = True
+                                break
+                        if found_target:
                             break
                     if found_target:
                         break
@@ -129,28 +137,27 @@ def main():
             # Final attempt: try glob search in case other parameters are completely different
             if not found_target:
                 for ep in epochs_to_check:
-                    glob_pattern = os.path.join(
-                        "result_graphs",
-                        county,
-                        date,
-                        f"*_{vacc_str}_metro_*",
-                        str(ep),
-                        "simulation_results.png"
-                    )
-                    matches = glob.glob(glob_pattern)
-                    if matches:
-                        src_path = matches[0]
-                        dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}.png"
-                        dest_path = os.path.join(dest_dir, dest_filename)
-                        shutil.copy2(src_path, dest_path)
-                        
-                        # Extract the parameter folder name from path
-                        parts = src_path.split(os.sep)
-                        pf = parts[-3]
-                        
-                        print(f"[{county}] Copied (glob) for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
-                        copied_count += 1
-                        found_target = True
+                    glob_patterns = [
+                        os.path.join("result_graphs", county, date, f"*_{vacc_str}_{use_7day_avg}_metro_*", str(ep), "simulation_results.png"),
+                        os.path.join("result_graphs", county, date, f"*_{vacc_str}_metro_*", str(ep), "simulation_results.png")
+                    ]
+                    for glob_pattern in glob_patterns:
+                        matches = glob.glob(glob_pattern)
+                        if matches:
+                            src_path = matches[0]
+                            dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}_use_7day_avg_{use_7day_avg}.png"
+                            dest_path = os.path.join(dest_dir, dest_filename)
+                            shutil.copy2(src_path, dest_path)
+                            
+                            # Extract the parameter folder name from path
+                            parts = src_path.split(os.sep)
+                            pf = parts[-3]
+                            
+                            print(f"[{county}] Copied (glob) for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
+                            copied_count += 1
+                            found_target = True
+                            break
+                    if found_target:
                         break
                         
             if not found_target:

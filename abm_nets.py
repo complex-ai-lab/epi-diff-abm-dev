@@ -93,17 +93,21 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
     cf_type = sim.config['simulation_metadata']['COUNTERFACTUAL_TYPE']
     with_k = sim.config['simulation_metadata']['WITH_K']
     with_vacc = sim.config['simulation_metadata']['WITH_VACC']
+    use_7day_avg = sim.config['simulation_metadata'].get('USE_7DAY_AVG', True)
 
     metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
         labels_np = labels.cpu().detach().numpy()
-        output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
+        output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
         os.makedirs(output_dir, exist_ok=True)
 
         # Plot comparison if possible
         try:
             county_data = pd.read_csv(f"data/processed_data/{population}/{date}/daily_data.csv", parse_dates=['date'])
-            county_cases = torch.tensor(county_data['cases'].values[:n_steps], dtype=torch.float)
+            case_col = 'cases_7day_avg' if use_7day_avg else 'cases_singular'
+            if case_col not in county_data.columns:
+                case_col = 'cases'
+            county_cases = torch.tensor(county_data[case_col].values[:n_steps], dtype=torch.float)
             county_cases_np = county_cases.cpu().detach().numpy()
 
             plt.figure(figsize=(8, 6))
@@ -140,7 +144,10 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
 
     if epoch % 50 == 0 or epoch == epochs - 1:
         county_data = pd.read_csv(f"data/processed_data/{population}/{date}/daily_data.csv", parse_dates=['date'])
-        county_cases = torch.tensor(county_data['cases'].values[:n_steps], dtype=torch.float)
+        case_col = 'cases_7day_avg' if use_7day_avg else 'cases_singular'
+        if case_col not in county_data.columns:
+            case_col = 'cases'
+        county_cases = torch.tensor(county_data[case_col].values[:n_steps], dtype=torch.float)
         
         labels_np = labels.cpu().detach().numpy()
         county_cases_np = county_cases.cpu().detach().numpy()
@@ -154,8 +161,8 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
         plt.legend()
         
         metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
-        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}', exist_ok=True)
-        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}/simulation_results.png')
+        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}', exist_ok=True)
+        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}/simulation_results.png')
         plt.close()
 
         trans_substep = runner.initializer.transition_function['0'].new_transmission
@@ -172,7 +179,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
                 plt.grid(True)
                 plt.legend()
                 plt.tight_layout()
-                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}/{epoch}/{stage}_proportion.png")
+                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}/{stage}_proportion.png")
                 plt.close()
 
     if epoch == epochs - 1:
@@ -210,9 +217,13 @@ def eval_net(sim, runner):
     infected_to_recovered = sim.config['simulation_metadata']['INFECTED_TO_RECOVERED_TIME']
     with_k = sim.config['simulation_metadata']['WITH_K']
     with_vacc = sim.config['simulation_metadata']['WITH_VACC']
+    use_7day_avg = sim.config['simulation_metadata'].get('USE_7DAY_AVG', True)
 
     df = pd.read_csv(f"data/processed_data/{population}/{date}/daily_data.csv", parse_dates=["date"])
-    case_numbers = torch.tensor(df['cases'].values, dtype=torch.float, device=DEVICE)
+    case_col = 'cases_7day_avg' if use_7day_avg else 'cases_singular'
+    if case_col not in df.columns:
+        case_col = 'cases'
+    case_numbers = torch.tensor(df[case_col].values, dtype=torch.float, device=DEVICE)
 
     context_tensor = torch.tensor([initial_rate, exposed_to_infected, infected_to_recovered], dtype=torch.float, device=DEVICE)
     learn_model = LearnableParams(num_weeks, context_dim=3, device=DEVICE)
@@ -257,7 +268,7 @@ def eval_net(sim, runner):
                 runner.state_trajectory = []
 
                 param_load_phase = 0 if metro_phase == 0 else 2
-                base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{param_load_phase}'
+                base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
                 param_array = np.loadtxt(os.path.join(base_dir, "calibrated_params.txt"))
                 param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
                 param_tensor = param_tensor[:, None] if param_tensor.ndim == 1 else param_tensor
@@ -274,7 +285,7 @@ def eval_net(sim, runner):
                 _ = execute(sim, runner, case_numbers, epoch=0, epochs=1, n_steps=num_steps)
 
                 substep = runner.initializer.transition_function['0'].new_transmission
-                output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{param_load_phase}'
+                output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
                 path = f'{output_dir}/counterfactual_data{cf_type}_proportions.csv'
 
                 if num_iterations > 1:
@@ -341,7 +352,7 @@ def eval_net(sim, runner):
 
         if epoch == epochs - 1:
             substep = runner.initializer.transition_function['0'].new_transmission
-            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
+            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
             path = f'{output_dir}/training_proportions.csv'
             substep.save_proportions_to_disk(path)
             np.savetxt(os.path.join(output_dir, "calibrated_params.txt"), debug_tensor.detach().cpu().numpy(), fmt="%.6f")
@@ -357,7 +368,7 @@ def eval_net(sim, runner):
     iters = np.arange(1, epochs + 1)
     data = np.column_stack((iters, loss_array))
 
-    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_metro_{metro_phase}'
+    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
     with open(os.path.join(output_dir, "training_loss.csv"), mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Iteration', 'Task Loss'])

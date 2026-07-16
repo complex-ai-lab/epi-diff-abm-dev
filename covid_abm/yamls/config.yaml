@@ -24,6 +24,7 @@ simulation_metadata:
   R_0_VALUE: 2.4
   START_WEEK: 202048
   SUSCEPTIBLE_VAR: 0
+  USE_7DAY_AVG: false
   USE_GROUND_TRUTH_4WK_AVG: false
   USE_GROUND_TRUTH_CASE_NUMBERS: false
   USE_PICKLE: false

@@ -72,8 +72,11 @@ def process_fips_data(fips_code):
         df["cases"]  = fix_negative(df["cases"])
         df["deaths"] = fix_negative(df["deaths"])
 
-        # Compute 7-day sliding window average for cases (3 days before, actual day, 3 days after)
-        df["cases"] = df["cases"].rolling(window=7, center=True, min_periods=1).mean()
+        # Store both: actual singular days and 7-day average
+        df["cases_singular"] = df["cases"]
+        df["cases_7day_avg"] = df["cases"].rolling(window=7, center=True, min_periods=1).mean()
+        # Keep original 'cases' column as the 7-day average to maintain backward compatibility
+        df["cases"] = df["cases_7day_avg"]
 
         # Aggregate weekly on full data
         df["week"] = df["date"].dt.to_period("W").apply(lambda r: r.start_time)
