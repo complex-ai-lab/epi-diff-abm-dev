@@ -78,92 +78,87 @@ def main():
     copied_count = 0
     missing_count = 0
 
-    # Define the three targets we want to pull per county
+    # Define the target folders and epochs we want to pull per county
     targets = [
-        {"with_vacc": True, "epoch": 250},
-        {"with_vacc": True, "epoch": 500},
-        {"with_vacc": False, "epoch": 250}
+        {"folder": "0.0005_3_5_True_False_metro_0", "epoch": 250},
+        {"folder": "0.0005_3_5_True_True_metro_0", "epoch": 250},
+        {"folder": "0.0005_3_5_True_True_metro_0", "epoch": 500},
+        {"folder": "0.0005_3_5_True_True_False_metro_0", "epoch": 250},
+        {"folder": "0.0005_3_5_True_True_False_metro_0", "epoch": 500},
     ]
 
     for county in COUNTIES:
         for target in targets:
-            vacc_val = target["with_vacc"]
+            folder_name = target["folder"]
             epoch_val = target["epoch"]
-            vacc_str = str(vacc_val)
+            epochs_to_check = [epoch_val, epoch_val - 1]
             
             found_target = False
             
-            # Check standard and fallback phases
-            phases_to_check = [metro_phase] + [p for p in [2, 1, 0] if p != metro_phase]
-            # Check potential epochs (e.g., [250, 249] or [500, 499])
-            epochs_to_check = [epoch_val, epoch_val - 1]
-            
-            # Try constructing exact paths with potential variations of WITH_K
-            k_values = [with_k]
-            if with_k is not None:
-                k_values.append(not with_k)
-                
-            for k_val in k_values:
-                for phase in phases_to_check:
-                    folder_options = [
-                        f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_{use_7day_avg}_metro_{phase}",
-                        f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{k_val}_{vacc_str}_metro_{phase}"
-                    ]
-                    for pf in folder_options:
-                        for ep in epochs_to_check:
-                            src_path = os.path.join(
-                                "result_graphs",
-                                county,
-                                date,
-                                pf,
-                                str(ep),
-                                "simulation_results.png"
-                            )
-                            if os.path.exists(src_path):
-                                dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}_use_7day_avg_{use_7day_avg}.png"
-                                dest_path = os.path.join(dest_dir, dest_filename)
-                                shutil.copy2(src_path, dest_path)
-                                print(f"[{county}] Copied for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
-                                copied_count += 1
-                                found_target = True
-                                break
-                        if found_target:
-                            break
-                    if found_target:
-                        break
-                if found_target:
+            # 1. Try exact folder name and epoch
+            for ep in epochs_to_check:
+                src_path = os.path.join(
+                    "result_graphs",
+                    county,
+                    date,
+                    folder_name,
+                    str(ep),
+                    "simulation_results.png"
+                )
+                if os.path.exists(src_path):
+                    dest_filename = f"{county}_{folder_name}_epoch_{epoch_val}.png"
+                    dest_path = os.path.join(dest_dir, dest_filename)
+                    shutil.copy2(src_path, dest_path)
+                    print(f"[{county}] Copied target '{folder_name}' epoch {epoch_val} (found at epoch {ep})")
+                    copied_count += 1
+                    found_target = True
                     break
-            
-            # Final attempt: try glob search in case other parameters are completely different
-            if not found_target:
-                for ep in epochs_to_check:
-                    glob_patterns = [
-                        os.path.join("result_graphs", county, date, f"*_{vacc_str}_{use_7day_avg}_metro_*", str(ep), "simulation_results.png"),
-                        os.path.join("result_graphs", county, date, f"*_{vacc_str}_metro_*", str(ep), "simulation_results.png")
-                    ]
-                    for glob_pattern in glob_patterns:
-                        matches = glob.glob(glob_pattern)
-                        if matches:
-                            src_path = matches[0]
-                            dest_filename = f"{county}_with_vacc_{vacc_str}_epoch_{epoch_val}_use_7day_avg_{use_7day_avg}.png"
+
+            # 2. Fallback: try phase variations (e.g. if folder_name ends with _metro_0, check _metro_1, _metro_2)
+            if not found_target and "_metro_" in folder_name:
+                base_folder, curr_phase = folder_name.rsplit("_metro_", 1)
+                phases_to_check = [curr_phase] + [str(p) for p in [0, 1, 2] if str(p) != curr_phase]
+                for phase in phases_to_check:
+                    alt_folder = f"{base_folder}_metro_{phase}"
+                    for ep in epochs_to_check:
+                        src_path = os.path.join(
+                            "result_graphs",
+                            county,
+                            date,
+                            alt_folder,
+                            str(ep),
+                            "simulation_results.png"
+                        )
+                        if os.path.exists(src_path):
+                            dest_filename = f"{county}_{folder_name}_epoch_{epoch_val}.png"
                             dest_path = os.path.join(dest_dir, dest_filename)
                             shutil.copy2(src_path, dest_path)
-                            
-                            # Extract the parameter folder name from path
-                            parts = src_path.split(os.sep)
-                            pf = parts[-3]
-                            
-                            print(f"[{county}] Copied (glob) for target (vacc={vacc_str}, epoch={epoch_val}) from epoch {ep} run folder '{pf}'")
+                            print(f"[{county}] Copied target '{folder_name}' epoch {epoch_val} from fallback folder '{alt_folder}' epoch {ep}")
                             copied_count += 1
                             found_target = True
                             break
                     if found_target:
                         break
-                        
+
+            # 3. Fallback glob search
             if not found_target:
-                # To avoid overwhelming output, we only print if the county has other folders/results
-                # or we can print normally
-                print(f"[{county}] WARNING: No simulation_results.png found for target (vacc={vacc_str}, epoch={epoch_val})")
+                for ep in epochs_to_check:
+                    glob_pattern = os.path.join("result_graphs", county, date, f"{folder_name}*", str(ep), "simulation_results.png")
+                    matches = glob.glob(glob_pattern)
+                    if matches:
+                        src_path = matches[0]
+                        dest_filename = f"{county}_{folder_name}_epoch_{epoch_val}.png"
+                        dest_path = os.path.join(dest_dir, dest_filename)
+                        shutil.copy2(src_path, dest_path)
+                        parts = src_path.split(os.sep)
+                        matched_folder = parts[-3]
+                        print(f"[{county}] Copied (glob) target '{folder_name}' epoch {epoch_val} from folder '{matched_folder}' epoch {ep}")
+                        copied_count += 1
+                        found_target = True
+                        break
+
+            if not found_target:
+                print(f"[{county}] WARNING: No simulation_results.png found for target '{folder_name}' epoch {epoch_val}")
                 missing_count += 1
 
     print(f"\nDone! Successfully collected {copied_count} graphs.")
