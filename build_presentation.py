@@ -284,13 +284,12 @@ def add_methodology_slide(prs):
             p_b.font.color.rgb = RGBColor(65, 90, 119)
             p_b.space_before = Pt(2)
 
-def add_state_scaling_factor_slide(prs, county_params_map):
+def add_state_scaling_factor_slides(prs, county_params_map):
     """
-    Plots the weekly scaling factor (R_t) trend over time aggregated by State,
-    saves the chart, and adds it as a slide.
+    Generates an individual scaling factor (R_t) trend plot and dedicated slide for each state.
     """
     if not county_params_map:
-        print("No county parameters available for state scaling factor plot.")
+        print("No county parameters available for state scaling factor plots.")
         return
 
     # Group weekly R by state
@@ -305,39 +304,44 @@ def add_state_scaling_factor_slide(prs, county_params_map):
     if not state_weekly_r:
         return
 
-    plt.figure(figsize=(10, 5.5))
-    num_weeks = max(len(info["params"]["weekly_r2"]) for info in county_params_map.values())
-    weeks = np.arange(1, num_weeks + 1)
+    blank_layout = prs.slide_layouts[6]
 
     for state, r_list in sorted(state_weekly_r.items()):
+        plt.figure(figsize=(10, 5.2))
+        num_weeks = max(len(w) for w in r_list)
+        weeks = np.arange(1, num_weeks + 1)
+
+        # Plot individual county trajectories lightly
+        for w in r_list:
+            plt.plot(weeks[:len(w)], w, color='#64748B', alpha=0.35, linewidth=1.2)
+
+        # Plot mean state trajectory
         min_len = min(len(w) for w in r_list)
         truncated_r = [w[:min_len] for w in r_list]
         avg_r_state = np.mean(truncated_r, axis=0)
-        plt.plot(weeks[:min_len], avg_r_state, marker='o', linewidth=2, label=f"{state} (n={len(r_list)})")
+        plt.plot(weeks[:min_len], avg_r_state, color='#1B263B', marker='o', linewidth=2.5, label=f"State Mean ({state})")
 
-    plt.xlabel("Simulation Week", fontsize=12)
-    plt.ylabel("Mean Scaling Factor (R)", fontsize=12)
-    plt.title("Scaling Factor (R) Trend Over Time by State", fontsize=14, fontweight='bold')
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=9)
-    plt.tight_layout()
+        plt.xlabel("Simulation Week", fontsize=12)
+        plt.ylabel("Scaling Factor (R)", fontsize=12)
+        plt.title(f"Scaling Factor (R) Trend Over Time – {state} ({len(r_list)} counties)", fontsize=14, fontweight='bold')
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.legend(loc='upper right', fontsize=10)
+        plt.tight_layout()
 
-    img_path = "/tmp/state_scaling_factor_trends.png"
-    plt.savefig(img_path, dpi=300)
-    plt.close()
+        img_path = f"/tmp/state_scaling_factor_{state}.png"
+        plt.savefig(img_path, dpi=300)
+        plt.close()
 
-    blank_layout = prs.slide_layouts[6]
-    slide = prs.slides.add_slide(blank_layout)
+        slide = prs.slides.add_slide(blank_layout)
+        title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+        tf = title_box.text_frame
+        p = tf.paragraphs[0]
+        p.text = f"Scaling Factor (R) Trend Over Time – {state}"
+        p.font.size = Pt(26)
+        p.font.bold = True
+        p.font.color.rgb = RGBColor(27, 38, 59)
 
-    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
-    tf = title_box.text_frame
-    p = tf.paragraphs[0]
-    p.text = "Scaling Factor (R) Trend Over Time by State"
-    p.font.size = Pt(26)
-    p.font.bold = True
-    p.font.color.rgb = RGBColor(27, 38, 59)
-
-    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(12.1))
+        slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(12.1))
 
 def calculate_county_nrmse(fips, config):
     """Calculates Normalized RMSE (NRMSE) between simulation factual cases and ground truth actual cases."""
@@ -565,13 +569,7 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
             p_val1.font.size = Pt(20)
             p_val1.font.bold = True
             p_val1.font.color.rgb = RGBColor(27, 38, 59)
-
-            p_sub1 = tf_p.add_paragraph()
-            p_sub1.text = "λ(t,s_i,a_s,n) = [ R·S_{a_s}·A_{s_i}·B_n / I_bar ] ∫ f_Γ(u) du"
-            p_sub1.font.size = Pt(10)
-            p_sub1.font.italic = True
-            p_sub1.font.color.rgb = RGBColor(100, 110, 120)
-            p_sub1.space_after = Pt(8)
+            p_val1.space_after = Pt(12)
 
             # 2. Initial Infection Rate (per 100k)
             p_label2 = tf_p.add_paragraph()
@@ -579,14 +577,13 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
             p_label2.font.size = Pt(14)
             p_label2.font.bold = True
             p_label2.font.color.rgb = RGBColor(65, 90, 119)
-            p_label2.space_before = Pt(6)
 
             p_val2 = tf_p.add_paragraph()
             p_val2.text = f"{params['initial_rate_per_100k']:.2f} per 100k"
             p_val2.font.size = Pt(20)
             p_val2.font.bold = True
             p_val2.font.color.rgb = RGBColor(27, 38, 59)
-            p_val2.space_after = Pt(8)
+            p_val2.space_after = Pt(12)
 
             # 3. K Parameter (Underreporting Factor)
             p_label3 = tf_p.add_paragraph()
@@ -594,7 +591,6 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
             p_label3.font.size = Pt(14)
             p_label3.font.bold = True
             p_label3.font.color.rgb = RGBColor(65, 90, 119)
-            p_label3.space_before = Pt(6)
 
             p_val3 = tf_p.add_paragraph()
             p_val3.text = f"{params['k_param']:.4f}"
@@ -612,8 +608,10 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
         if idx % 20 == 0 or idx == len(COUNTIES):
             print(f"Processed {idx}/{len(COUNTIES)} county slides...")
 
-    print("Adding state-level aggregate analysis slides...")
-    add_state_scaling_factor_slide(prs, county_params_map)
+    print("Adding state-level individual scaling factor trend slides...")
+    add_state_scaling_factor_slides(prs, county_params_map)
+    
+    print("Adding state NRMSE comparison slide...")
     add_state_nrmse_slide(prs, config, county_name_lookup)
 
     prs.save(output_pptx)
