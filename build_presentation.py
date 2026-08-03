@@ -2,8 +2,8 @@
 """
 build_presentation.py
 
-Generates a PowerPoint presentation showing simulation results and calibrated parameters
-for all 153 counties hardcoded in run_all_sims.sh.
+Generates a PowerPoint presentation showing simulation results, methodology,
+calibrated parameters, and state-level comparative metrics for all 153 counties.
 """
 
 import os
@@ -12,6 +12,7 @@ import glob
 import yaml
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -98,7 +99,6 @@ def get_county_folder_and_graph(population, config):
 
     # Check if exact directory exists, or search for potential metro phase variations
     if not os.path.exists(base_dir):
-        # Fallback search if metro_phase differed
         matches = glob.glob(os.path.join("result_graphs", population, date, f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_*"))
         if matches:
             base_dir = sorted(matches)[-1]
@@ -108,7 +108,6 @@ def get_county_folder_and_graph(population, config):
 
     calibrated_params_file = os.path.join(base_dir, "calibrated_params.txt")
 
-    # Find highest numeric epoch directory with simulation_results.png
     subdirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d)) and d.isdigit()]
     subdirs = sorted(subdirs, key=lambda x: int(x), reverse=True)
 
@@ -126,7 +125,7 @@ def get_county_folder_and_graph(population, config):
 
 def parse_calibrated_params(params_file):
     """
-    Reads calibrated_params.txt and extracts Average R2, Initial Infection Rate, and K parameter.
+    Reads calibrated_params.txt and extracts Average R (Scaling Factor), Initial Infection Rate (per 100k), and K parameter.
     """
     if not params_file or not os.path.exists(params_file):
         return None
@@ -142,14 +141,320 @@ def parse_calibrated_params(params_file):
         k_param = float(data[-1])
 
         return {
+            "weekly_r2": weekly_r2,
             "avg_r2": avg_r2,
             "initial_rate": initial_rate,
+            "initial_rate_per_100k": initial_rate * 100000.0,
             "k_param": k_param,
             "num_weeks": len(weekly_r2)
         }
     except Exception as e:
         print(f"Error parsing calibrated params from {params_file}: {e}")
         return None
+
+def add_parameter_explanation_slide(prs):
+    """Adds an initial slide explaining each parameter and its formula."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    # Title Header
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = "Simulation Parameter Definitions & Equations"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    params_data = [
+        {
+            "name": "Scaling Factor (R)",
+            "desc": "Scales the overall transmission rate λ across agent contact networks. Under simplifying assumptions, it represents the mean number of secondary infections caused by an infectious individual.",
+            "formula": "λ(t, s_i, a_s, n) = [ R · S_{a_s} · A_{s_i} · B_n / I_bar ] · ∫_{t-1}^t f_Γ(u; μ_i, σ_i²) du"
+        },
+        {
+            "name": "Initial Infection Rate (per 100k)",
+            "desc": "Proportion of individuals initialized in the infected compartment at timestep t=0, expressed per 100,000 residents in the county population (I₀ × 10⁵).",
+            "formula": "Initial Infected Agents = ⌈ (Initial Rate per 100k / 100,000) · N ⌉"
+        },
+        {
+            "name": "K Parameter (Underreporting Factor)",
+            "desc": "Scalar multiplier adjusting raw simulated new infections (N_t) to observable reported case counts (Ŷ_t) to account for public health surveillance underreporting.",
+            "formula": "Ŷ_t = k · N_t"
+        }
+    ]
+
+    for idx, pinfo in enumerate(params_data):
+        top_pos = Inches(1.4 + idx * 1.8)
+        card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.6), top_pos, Inches(12.1), Inches(1.6))
+        card.fill.solid()
+        card.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        card.line.color.rgb = RGBColor(210, 215, 225)
+        card.line.width = Pt(1.5)
+
+        tb = slide.shapes.add_textbox(Inches(0.8), top_pos + Inches(0.1), Inches(11.7), Inches(1.4))
+        tf = tb.text_frame
+        tf.word_wrap = True
+
+        p_name = tf.paragraphs[0]
+        p_name.text = pinfo["name"]
+        p_name.font.size = Pt(18)
+        p_name.font.bold = True
+        p_name.font.color.rgb = RGBColor(13, 27, 42)
+
+        p_desc = tf.add_paragraph()
+        p_desc.text = pinfo["desc"]
+        p_desc.font.size = Pt(13)
+        p_desc.font.color.rgb = RGBColor(65, 90, 119)
+        p_desc.space_before = Pt(2)
+
+        p_form = tf.add_paragraph()
+        p_form.text = f"Formula: {pinfo['formula']}"
+        p_form.font.size = Pt(13)
+        p_form.font.bold = True
+        p_form.font.color.rgb = RGBColor(27, 38, 59)
+        p_form.space_before = Pt(3)
+
+def add_methodology_slide(prs):
+    """Adds a slide detailing methodology, county selection, and policy data sources."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    # Title Header
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = "Methodology, Assumptions & Policy Data Sources"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    sections = [
+        {
+            "title": "1. County Selection & Timeline",
+            "bullets": [
+                "Evaluated 153 U.S. counties with population sizes between 20,000 and 200,000.",
+                "Simulated over a 168-day ground-truth window (October 26, 2020 – April 11, 2021).",
+                "Qualitatively filtered to retain counties where gradient-based optimization converged to an accurate epidemiological baseline."
+            ]
+        },
+        {
+            "title": "2. School & Workplace Closures (ICPSR 39109 Policy Dataset)",
+            "bullets": [
+                "Source: County-Level Policy Database (ICPSR 39109, provided by John; data/county_policy_data/39109-0001-Data.tsv).",
+                "Extracted C1_SCHOOL and C2_WORKPLACE mandates (with state-level fallbacks S_C1_SCHOOL / S_C2_WORKPLACE if county values were missing/99).",
+                "Binarization: Mandate severity levels 0 & 1 -> 0 (weak/open); levels 2 & 3 -> 1 (strong/closed).",
+                "ABM Implementation: Enforced via a Network Freezing Mechanism that probabilistically prunes contact edges (0-25% edge removal for open vs 75-100% for closed)."
+            ]
+        },
+        {
+            "title": "3. Vaccination Rollout (CDC Socrata API)",
+            "bullets": [
+                "Source: CDC COVID-19 Vaccinations County Dataset via Socrata API (https://data.cdc.gov/resource/8xkx-amqh.csv, querying administered_dose1_recip).",
+                "Extraction: Ingests daily first-dose recipient increments (new_vax = diff(administered_dose1_recip)).",
+                "ABM Implementation: In apply_vaccines, N_vax susceptible agents are probabilistically transitioned directly to the Recovered state (R) each timestep."
+            ]
+        }
+    ]
+
+    for idx, sinfo in enumerate(sections):
+        top_pos = Inches(1.3 + idx * 1.9)
+        box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.6), top_pos, Inches(12.1), Inches(1.75))
+        box.fill.solid()
+        box.fill.fore_color.rgb = RGBColor(248, 249, 250)
+        box.line.color.rgb = RGBColor(220, 224, 230)
+        box.line.width = Pt(1.5)
+
+        tb = slide.shapes.add_textbox(Inches(0.8), top_pos + Inches(0.08), Inches(11.7), Inches(1.6))
+        tf = tb.text_frame
+        tf.word_wrap = True
+
+        p_t = tf.paragraphs[0]
+        p_t.text = sinfo["title"]
+        p_t.font.size = Pt(16)
+        p_t.font.bold = True
+        p_t.font.color.rgb = RGBColor(13, 27, 42)
+
+        for b in sinfo["bullets"]:
+            p_b = tf.add_paragraph()
+            p_b.text = f"•  {b}"
+            p_b.font.size = Pt(12)
+            p_b.font.color.rgb = RGBColor(65, 90, 119)
+            p_b.space_before = Pt(2)
+
+def add_state_scaling_factor_slide(prs, county_params_map):
+    """
+    Plots the weekly scaling factor (R_t) trend over time aggregated by State,
+    saves the chart, and adds it as a slide.
+    """
+    if not county_params_map:
+        print("No county parameters available for state scaling factor plot.")
+        return
+
+    # Group weekly R by state
+    state_weekly_r = {}
+    for fips, info in county_params_map.items():
+        state = info["state"]
+        weekly_r = info["params"]["weekly_r2"]
+        if state not in state_weekly_r:
+            state_weekly_r[state] = []
+        state_weekly_r[state].append(weekly_r)
+
+    if not state_weekly_r:
+        return
+
+    plt.figure(figsize=(10, 5.5))
+    num_weeks = max(len(info["params"]["weekly_r2"]) for info in county_params_map.values())
+    weeks = np.arange(1, num_weeks + 1)
+
+    for state, r_list in sorted(state_weekly_r.items()):
+        min_len = min(len(w) for w in r_list)
+        truncated_r = [w[:min_len] for w in r_list]
+        avg_r_state = np.mean(truncated_r, axis=0)
+        plt.plot(weeks[:min_len], avg_r_state, marker='o', linewidth=2, label=f"{state} (n={len(r_list)})")
+
+    plt.xlabel("Simulation Week", fontsize=12)
+    plt.ylabel("Mean Scaling Factor (R)", fontsize=12)
+    plt.title("Scaling Factor (R) Trend Over Time by State", fontsize=14, fontweight='bold')
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=9)
+    plt.tight_layout()
+
+    img_path = "/tmp/state_scaling_factor_trends.png"
+    plt.savefig(img_path, dpi=300)
+    plt.close()
+
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    p = tf.paragraphs[0]
+    p.text = "Scaling Factor (R) Trend Over Time by State"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(12.1))
+
+def calculate_county_nrmse(fips, config):
+    """Calculates Normalized RMSE (NRMSE) between simulation factual cases and ground truth actual cases."""
+    base_dir, graph_path, params_file = get_county_folder_and_graph(fips, config)
+    meta = config.get("simulation_metadata", {})
+    date = meta.get("DATE", "202010-202104")
+    use_7day_avg = meta.get("USE_7DAY_AVG", True)
+    initial_rate = meta.get("INITIAL_INFECTION_RATE", 0.0005)
+    exposed_to_infected = meta.get("EXPOSED_TO_INFECTED_TIME", 3)
+    infected_to_recovered = meta.get("INFECTED_TO_RECOVERED_TIME", 5)
+
+    # Load actual daily data
+    daily_csv = os.path.join("data", "processed_data", fips, date, "daily_data.csv")
+    if not os.path.exists(daily_csv):
+        daily_csv = os.path.join("data", "processed_data", fips, "daily_data.csv")
+
+    if not os.path.exists(daily_csv):
+        return None
+
+    try:
+        actual_df = pd.read_csv(daily_csv)
+        case_col = 'cases_7day_avg' if use_7day_avg and 'cases_7day_avg' in actual_df.columns else 'cases'
+        actual_cases = actual_df[case_col].values
+    except Exception:
+        return None
+
+    # Load simulation factual cases
+    sim_cases = None
+    gen_fac_path = os.path.join("results", fips, f"{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_metro_0", "generated_factual.csv")
+    if os.path.exists(gen_fac_path):
+        try:
+            gen_df = pd.read_csv(gen_fac_path)
+            sim_cases = gen_df["generated_factual_cases"].values
+        except Exception:
+            pass
+
+    if sim_cases is None and base_dir and os.path.exists(base_dir):
+        cf_path = os.path.join(base_dir, "counterfactual_data0.csv")
+        if os.path.exists(cf_path):
+            try:
+                cf_df = pd.read_csv(cf_path)
+                if "counterfactual_cases" in cf_df.columns:
+                    sim_cases = cf_df["counterfactual_cases"].values
+            except Exception:
+                pass
+
+    if sim_cases is None or len(actual_cases) == 0:
+        return None
+
+    min_len = min(len(sim_cases), len(actual_cases))
+    sim_cases = sim_cases[:min_len]
+    actual_cases = actual_cases[:min_len]
+
+    mean_actual = np.mean(actual_cases)
+    if mean_actual == 0:
+        return None
+
+    rmse = np.sqrt(np.mean((sim_cases - actual_cases) ** 2))
+    nrmse = rmse / mean_actual
+    return nrmse
+
+def add_state_nrmse_slide(prs, config, county_name_lookup):
+    """Calculates NRMSE per county, aggregates by state, plots comparison, and adds slide."""
+    state_nrmse = {}
+    for fips in COUNTIES:
+        nrmse = calculate_county_nrmse(fips, config)
+        if nrmse is not None:
+            state_abbr = county_name_lookup.get(fips, (None, STATE_FIPS_MAP.get(fips[:2], "US")))[1]
+            if state_abbr not in state_nrmse:
+                state_nrmse[state_abbr] = []
+            state_nrmse[state_abbr].append(nrmse)
+
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    p = tf.paragraphs[0]
+    p.text = "State Calibration Performance by Normalized RMSE (NRMSE)"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    if not state_nrmse:
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        shape.line.color.rgb = RGBColor(210, 215, 225)
+        tf_g = shape.text_frame
+        p_g = tf_g.paragraphs[0]
+        p_g.text = "State NRMSE Comparison Plot\n(Will be generated dynamically when executed on the server with simulation results)"
+        p_g.alignment = PP_ALIGN.CENTER
+        p_g.font.size = Pt(18)
+        p_g.font.color.rgb = RGBColor(120, 120, 120)
+        return
+
+    states = sorted(state_nrmse.keys())
+    mean_nrmse = [np.mean(state_nrmse[st]) for st in states]
+    std_nrmse = [np.std(state_nrmse[st]) if len(state_nrmse[st]) > 1 else 0 for st in states]
+
+    plt.figure(figsize=(10, 5.5))
+    bars = plt.bar(states, mean_nrmse, yerr=std_nrmse, capsize=4, color='#1B263B', edgecolor='#0D1B2A', alpha=0.85)
+    plt.xlabel("State", fontsize=12)
+    plt.ylabel("Normalized RMSE (RMSE / Mean Actual Cases)", fontsize=12)
+    plt.title("Calibration Accuracy by State (Lower NRMSE = Better Fit)", fontsize=14, fontweight='bold')
+    plt.grid(axis='y', linestyle='--', alpha=0.6)
+
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + 0.01, f"{height:.3f}", ha='center', va='bottom', fontsize=9)
+
+    plt.tight_layout()
+    img_path = "/tmp/state_nrmse_comparison.png"
+    plt.savefig(img_path, dpi=300)
+    plt.close()
+
+    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(12.1))
 
 def create_presentation(output_pptx="simulation_results_presentation.pptx"):
     """Builds the full presentation for all counties."""
@@ -160,18 +465,24 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
     # Set 16:9 widescreen layout
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
-    blank_layout = prs.slide_layouts[6]  # Blank slide layout
+    blank_layout = prs.slide_layouts[6]
+
+    print("Adding introductory slides (Parameter Definitions & Methodology)...")
+    add_parameter_explanation_slide(prs)
+    add_methodology_slide(prs)
+
+    county_params_map = {}
 
     print(f"Generating presentation for {len(COUNTIES)} counties...")
 
     for idx, fips in enumerate(COUNTIES, 1):
-        # Resolve county & state name
         if fips in county_name_lookup:
             c_name, state_abbr = county_name_lookup[fips]
             title_text = f"{c_name}, {state_abbr} (FIPS: {fips})"
         else:
             state_abbr = STATE_FIPS_MAP.get(fips[:2], "US")
-            title_text = f"County {fips}, {state_abbr} (FIPS: {fips})"
+            c_name = f"County {fips}"
+            title_text = f"{c_name}, {state_abbr} (FIPS: {fips})"
 
         slide = prs.slides.add_slide(blank_layout)
 
@@ -195,7 +506,6 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
         if graph_path and os.path.exists(graph_path):
             slide.shapes.add_picture(graph_path, Inches(0.6), Inches(1.4), width=Inches(7.2))
         else:
-            # Placeholder box if graph missing
             shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(7.2), Inches(5.4))
             shape.fill.solid()
             shape.fill.fore_color.rgb = RGBColor(240, 240, 240)
@@ -215,14 +525,12 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
         card_width = Inches(4.5)
         card_height = Inches(5.4)
 
-        # Background card container
         card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, card_left, card_top, card_width, card_height)
         card.fill.solid()
         card.fill.fore_color.rgb = RGBColor(248, 249, 250)
         card.line.color.rgb = RGBColor(220, 224, 230)
         card.line.width = Pt(1.5)
 
-        # Card Title
         card_title_box = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.2), card_width - Inches(0.4), Inches(0.6))
         tf_ct = card_title_box.text_frame
         tf_ct.word_wrap = True
@@ -232,36 +540,68 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
         p_ct.font.bold = True
         p_ct.font.color.rgb = RGBColor(13, 27, 42)
 
-        # Parse Parameters
         params = parse_calibrated_params(params_file)
 
-        param_box = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.9), card_width - Inches(0.4), card_height - Inches(1.1))
+        param_box = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.85), card_width - Inches(0.4), card_height - Inches(1.0))
         tf_p = param_box.text_frame
         tf_p.word_wrap = True
 
         if params:
-            lines = [
-                ("Average R₂", f"{params['avg_r2']:.4f}"),
-                ("Initial Infection Rate", f"{params['initial_rate']:.6f}"),
-                ("K Parameter (Dispersion)", f"{params['k_param']:.4f}"),
-                ("Evaluated Weeks", f"{params['num_weeks']} weeks")
-            ]
+            county_params_map[fips] = {
+                "county_name": c_name,
+                "state": state_abbr,
+                "params": params
+            }
 
-            for i, (label, val) in enumerate(lines):
-                p_label = tf_p.paragraphs[0] if i == 0 else tf_p.add_paragraph()
-                p_label.text = label
-                p_label.font.size = Pt(14)
-                p_label.font.bold = True
-                p_label.font.color.rgb = RGBColor(65, 90, 119)
-                p_label.space_after = Pt(2)
-                p_label.space_before = Pt(10) if i > 0 else Pt(0)
+            # 1. Scaling Factor (R)
+            p_label1 = tf_p.paragraphs[0]
+            p_label1.text = "Scaling Factor (R)"
+            p_label1.font.size = Pt(14)
+            p_label1.font.bold = True
+            p_label1.font.color.rgb = RGBColor(65, 90, 119)
 
-                p_val = tf_p.add_paragraph()
-                p_val.text = val
-                p_val.font.size = Pt(20)
-                p_val.font.bold = True
-                p_val.font.color.rgb = RGBColor(27, 38, 59)
-                p_val.space_after = Pt(8)
+            p_val1 = tf_p.add_paragraph()
+            p_val1.text = f"{params['avg_r2']:.4f}"
+            p_val1.font.size = Pt(20)
+            p_val1.font.bold = True
+            p_val1.font.color.rgb = RGBColor(27, 38, 59)
+
+            p_sub1 = tf_p.add_paragraph()
+            p_sub1.text = "λ(t,s_i,a_s,n) = [ R·S_{a_s}·A_{s_i}·B_n / I_bar ] ∫ f_Γ(u) du"
+            p_sub1.font.size = Pt(10)
+            p_sub1.font.italic = True
+            p_sub1.font.color.rgb = RGBColor(100, 110, 120)
+            p_sub1.space_after = Pt(8)
+
+            # 2. Initial Infection Rate (per 100k)
+            p_label2 = tf_p.add_paragraph()
+            p_label2.text = "Initial Infection Rate (per 100k)"
+            p_label2.font.size = Pt(14)
+            p_label2.font.bold = True
+            p_label2.font.color.rgb = RGBColor(65, 90, 119)
+            p_label2.space_before = Pt(6)
+
+            p_val2 = tf_p.add_paragraph()
+            p_val2.text = f"{params['initial_rate_per_100k']:.2f} per 100k"
+            p_val2.font.size = Pt(20)
+            p_val2.font.bold = True
+            p_val2.font.color.rgb = RGBColor(27, 38, 59)
+            p_val2.space_after = Pt(8)
+
+            # 3. K Parameter (Underreporting Factor)
+            p_label3 = tf_p.add_paragraph()
+            p_label3.text = "K Parameter (Underreporting)"
+            p_label3.font.size = Pt(14)
+            p_label3.font.bold = True
+            p_label3.font.color.rgb = RGBColor(65, 90, 119)
+            p_label3.space_before = Pt(6)
+
+            p_val3 = tf_p.add_paragraph()
+            p_val3.text = f"{params['k_param']:.4f}"
+            p_val3.font.size = Pt(20)
+            p_val3.font.bold = True
+            p_val3.font.color.rgb = RGBColor(27, 38, 59)
+
         else:
             p_err = tf_p.paragraphs[0]
             p_err.text = "Calibrated parameters (calibrated_params.txt)\nnot found or incomplete."
@@ -271,6 +611,10 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
 
         if idx % 20 == 0 or idx == len(COUNTIES):
             print(f"Processed {idx}/{len(COUNTIES)} county slides...")
+
+    print("Adding state-level aggregate analysis slides...")
+    add_state_scaling_factor_slide(prs, county_params_map)
+    add_state_nrmse_slide(prs, config, county_name_lookup)
 
     prs.save(output_pptx)
     print(f"\nSuccessfully generated presentation: {os.path.abspath(output_pptx)}")
