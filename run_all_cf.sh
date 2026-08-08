@@ -3,7 +3,7 @@
 
 #“#SBATCH” directives that convey submission options:
 
-#SBATCH --job-name=run_all_sims
+#SBATCH --job-name=run_all_cf
 #SBATCH --mail-user=facundoy@umich.edu
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --nodes=1
@@ -16,7 +16,7 @@
 #SBATCH --array=0-152%3
 #SBATCH --output=/home/%u/%x-%A-%a.log
 
-# List of counties hardcoded in run_all_networks.py/run_all_prep.py
+# List of counties hardcoded in run_all_sims.sh
 COUNTIES=(
     '01009' '01031' '01039' '01045' '01049' '01071' '13013' '13071' '13103' '13115'
     '13137' '13153' '17011' '17021' '17037' '17055' '17063' '17073' '17091' '17095'
@@ -49,18 +49,18 @@ if [ -z "$COUNTY" ]; then
 fi
 
 PROJECT_ROOT=$(pwd)
-WORK_DIR="workspace_task_${SLURM_ARRAY_TASK_ID}"
+WORK_DIR="workspace_cf_${SLURM_ARRAY_TASK_ID}"
 
-echo "Preparing workspace for county $COUNTY (Index $SLURM_ARRAY_TASK_ID)..."
+echo "Preparing workspace for counterfactual execution on county $COUNTY (Index $SLURM_ARRAY_TASK_ID)..."
 
 # Ensure global folders exist
-mkdir -p results result_graphs
+mkdir -p results result_graphs all_counterfactual_results
 
 # Create process-unique temporary workspace
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR" || exit 1
 
-# Setup clean up of workspace directory on exit
+# Setup cleanup of workspace directory on exit
 cleanup() {
     echo "Cleaning up workspace..."
     cd "$PROJECT_ROOT" || exit
@@ -68,21 +68,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Symlink all shared resources to prevent disk space duplication
+# Symlink all shared resources
 ln -s ../populations populations
 ln -s ../data data
 ln -s ../results results
 ln -s ../result_graphs result_graphs
+ln -s ../all_counterfactual_results all_counterfactual_results
 ln -s ../agent_torch agent_torch
 ln -s ../abm_nets.py abm_nets.py
 ln -s ../main.py main.py
 ln -s ../constants.py constants.py
 
-# Copy the config folder (so this run has an isolated config.yaml)
+# Copy the config folder and enable counterfactual generation mode
 cp -r ../covid_abm covid_abm
-sed -i 's/GENERATING_COUNTERFACTUAL: true/GENERATING_COUNTERFACTUAL: false/g' covid_abm/yamls/config.yaml
+sed -i 's/GENERATING_COUNTERFACTUAL: false/GENERATING_COUNTERFACTUAL: true/g' covid_abm/yamls/config.yaml
 
-echo "Launching simulation for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
+echo "Launching counterfactual simulation (Types 1-11) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
 python3 main.py "$COUNTY"
 
-echo "Simulation completed for county: $COUNTY"
+echo "Counterfactual simulations completed for county: $COUNTY"

@@ -401,7 +401,8 @@ class NewTransmission(SubstepTransitionMessagePassing):
                 7: ("F", "F"),
                 8: ("CF", "F"),
                 9: ("F", "CF"),
-                10: ("CF", "CF")
+                10: ("CF", "CF"),
+                11: ("F", "F")
             }
 
             if cf_type in logic_map:
@@ -416,6 +417,9 @@ class NewTransmission(SubstepTransitionMessagePassing):
                     occ_intervention = 1 - occ_intervention
                 elif o_logic != "F":
                     occ_intervention = o_logic
+
+            if cf_type == 11:
+                num_vaccines = 0
 
         school_net = self.apply_intervention_fast(school_intervention, self.school_net)
         occ_net = self.apply_intervention_fast(occ_intervention, self.networks['occ'][t])

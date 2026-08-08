@@ -101,6 +101,25 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
         output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
         os.makedirs(output_dir, exist_ok=True)
 
+        cf_folder_map = {
+            1: "01_static_all_open",
+            2: "02_static_school_closed_work_open",
+            3: "03_static_school_open_work_closed",
+            4: "04_static_all_closed",
+            5: "05_static_school_open_work_factual",
+            6: "06_static_school_open_work_flipped",
+            7: "07_timevar_factual_school_factual_work",
+            8: "08_timevar_flipped_school_factual_work",
+            9: "09_timevar_factual_school_flipped_work",
+            10: "10_timevar_flipped_school_flipped_work",
+            11: "11_timevar_factual_no_vaccines"
+        }
+        cf_folder_name = cf_folder_map.get(cf_type, f"type_{cf_type}")
+        central_graph_dir = os.path.join("all_counterfactual_results", cf_folder_name, "graphs")
+        central_data_dir = os.path.join("all_counterfactual_results", cf_folder_name, "data")
+        os.makedirs(central_graph_dir, exist_ok=True)
+        os.makedirs(central_data_dir, exist_ok=True)
+
         # Plot comparison if possible
         try:
             county_data = pd.read_csv(f"data/processed_data/{population}/{date}/daily_data.csv", parse_dates=['date'])
@@ -118,6 +137,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
             plt.title(f'Factual vs Counterfactual Data (Type {cf_type}) for {population}')
             plt.legend()
             plt.savefig(f'{output_dir}/counterfactual_results{cf_type}.png')
+            plt.savefig(os.path.join(central_graph_dir, f"{population}_counterfactual_results{cf_type}.png"))
             plt.close()
 
             counterfactual_df = pd.DataFrame({
@@ -133,6 +153,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
             })
 
         counterfactual_df.to_csv(f'{output_dir}/counterfactual_data{cf_type}.csv', index=False)
+        counterfactual_df.to_csv(os.path.join(central_data_dir, f"{population}_counterfactual_data{cf_type}.csv"), index=False)
 
         # Append mode for raw infected labels
         file_path_raw = os.path.join(output_dir, f'cf_raw_{cf_type}.csv')
@@ -255,7 +276,7 @@ def eval_net(sim, runner):
 
     metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
-        cf_types_to_run = range(7, 11)
+        cf_types_to_run = range(1, 12)
 
         for cf_type in cf_types_to_run:
             sim.config['simulation_metadata']['COUNTERFACTUAL_TYPE'] = cf_type
