@@ -75,7 +75,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         A_s_i = SFInfector[x_j[:, 1].long()]
         B_n = edge_attr[1, :]
         integrals = torch.zeros_like(B_n)
-        infected_idx = x_j[:, 2].bool()
+        infected_idx = (x_j[:, 2] == self.INFECTED_VAR)
         infected_times = t - x_j[infected_idx, 3] - 1
         infected_times = infected_times.clamp(min=0, max=lam_gamma_integrals.size(0) - 1)
 
