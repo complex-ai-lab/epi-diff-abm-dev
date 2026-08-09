@@ -314,9 +314,9 @@ def eval_net(sim, runner):
         for cf_type in cf_types_to_run:
             sim.config['simulation_metadata']['COUNTERFACTUAL_TYPE'] = cf_type
             cf_name = cf_folder_map.get(cf_type, f"type_{cf_type}")
-            print(f"\n=======================================================")
-            print(f"Running Counterfactual Type {cf_type} ({cf_name}) for FIPS {population}")
-            print(f"=======================================================")
+            print(f"\n=======================================================", flush=True)
+            print(f"Running Counterfactual Type {cf_type} ({cf_name}) for FIPS {population}", flush=True)
+            print(f"=======================================================", flush=True)
 
             all_age_proportions = []
             num_iterations = 30
