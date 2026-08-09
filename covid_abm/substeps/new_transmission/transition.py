@@ -82,9 +82,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         infected_times = infected_times.clamp(min=0, max=lam_gamma_integrals.size(0) - 1)
 
         integrals[infected_idx] = lam_gamma_integrals[infected_times.long()]
-        edge_network_numbers = edge_attr[0, :].long().clamp(min=0, max=x_i[:, 4].size(0) - 1)
-
-        I_bar = torch.gather(x_i[:, 4], 0, edge_network_numbers).view(-1)
+        I_bar = x_i[:, 4].view(-1)
         I_bar = torch.clamp(I_bar, min=1e-5)
 
         will_isolate = x_i[:, 6]
