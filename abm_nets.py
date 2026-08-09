@@ -233,7 +233,9 @@ def eval_net(sim, runner):
     num_steps = sim.config['simulation_metadata']['num_steps_per_episode']
     num_weeks = sim.config['simulation_metadata']['NUM_WEEKS']
     population = sim.config['simulation_metadata']['POPULATION']
-    generating_counterfactual = sim.config['simulation_metadata']['GENERATING_COUNTERFACTUAL']
+    raw_cf = sim.config['simulation_metadata'].get('GENERATING_COUNTERFACTUAL', False)
+    generating_counterfactual = str(raw_cf).lower() in ['true', '1']
+    print(f"[INFO] Mode: GENERATING_COUNTERFACTUAL = {generating_counterfactual}", flush=True)
     initial_rate = sim.config['simulation_metadata']['INITIAL_INFECTION_RATE']
     exposed_to_infected = sim.config['simulation_metadata']['EXPOSED_TO_INFECTED_TIME']
     infected_to_recovered = sim.config['simulation_metadata']['INFECTED_TO_RECOVERED_TIME']

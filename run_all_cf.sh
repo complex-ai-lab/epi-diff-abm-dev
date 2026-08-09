@@ -81,7 +81,7 @@ ln -s ../constants.py constants.py
 
 # Copy the config folder and enable counterfactual generation mode
 cp -r ../covid_abm covid_abm
-sed -i 's/GENERATING_COUNTERFACTUAL: false/GENERATING_COUNTERFACTUAL: true/g' covid_abm/yamls/config.yaml
+sed -i -E 's/GENERATING_COUNTERFACTUAL:.*/GENERATING_COUNTERFACTUAL: true/gi' covid_abm/yamls/config.yaml
 
 echo "Launching counterfactual simulation (Types 1-11) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
 python3 main.py "$COUNTY"
