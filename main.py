@@ -15,15 +15,22 @@ def run_county_phase(fips_code, phase):
         print(f"Error: Population module populations.pop{fips_code} not found.")
         sys.exit(1)
         
-    print(f"\n=======================================================")
-    print(f"Running FIPS {fips_code} | Metro Calibration Phase {phase}")
-    print(f"=======================================================")
-    
     sim = Executor(covid_abm, pop_loader=LoadPopulation(pop_module))
     
     # Configure simulation metadata in-memory for this FIPS and phase
+    if "GENERATING_COUNTERFACTUAL" in os.environ:
+        is_cf_env = os.environ["GENERATING_COUNTERFACTUAL"].lower() in ["true", "1"]
+        sim.config['simulation_metadata']['GENERATING_COUNTERFACTUAL'] = is_cf_env
+
     sim.config['simulation_metadata']['metro_calibration_phase'] = phase
     sim.config['simulation_metadata']['POPULATION'] = fips_code
+
+    is_cf = str(sim.config['simulation_metadata'].get('GENERATING_COUNTERFACTUAL', False)).lower() in ['true', '1']
+    mode_str = "Counterfactual Generation" if is_cf else f"Metro Calibration Phase {phase}"
+
+    print(f"\n=======================================================", flush=True)
+    print(f"Running FIPS {fips_code} | Mode: {mode_str}", flush=True)
+    print(f"=======================================================", flush=True)
     
     # Update the population directory to point to the current FIPS code folder
     original_pop_dir = sim.config['simulation_metadata']['population_dir']

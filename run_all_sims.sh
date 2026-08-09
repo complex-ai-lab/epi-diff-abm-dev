@@ -80,7 +80,7 @@ ln -s ../constants.py constants.py
 
 # Copy the config folder (so this run has an isolated config.yaml)
 cp -r ../covid_abm covid_abm
-sed -i 's/GENERATING_COUNTERFACTUAL: true/GENERATING_COUNTERFACTUAL: false/g' covid_abm/yamls/config.yaml
+export GENERATING_COUNTERFACTUAL=false
 
 echo "Launching simulation for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
 python3 main.py "$COUNTY"

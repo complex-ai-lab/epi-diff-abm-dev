@@ -82,13 +82,13 @@ ln -s ../constants.py constants.py
 # Copy config folder
 cp -r ../covid_abm covid_abm
 
-# --- PHASE 1: MODEL CALIBRATION (GENERATING_COUNTERFACTUAL: false) ---
-sed -i -E 's/GENERATING_COUNTERFACTUAL:.*/GENERATING_COUNTERFACTUAL: false/gi' covid_abm/yamls/config.yaml
+# --- PHASE 1: MODEL CALIBRATION ---
+export GENERATING_COUNTERFACTUAL=false
 echo "Phase 1: Launching model calibration (501 epochs) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
 python3 main.py "$COUNTY"
 
-# --- PHASE 2: COUNTERFACTUAL GENERATION (GENERATING_COUNTERFACTUAL: true) ---
-sed -i -E 's/GENERATING_COUNTERFACTUAL:.*/GENERATING_COUNTERFACTUAL: true/gi' covid_abm/yamls/config.yaml
+# --- PHASE 2: COUNTERFACTUAL GENERATION ---
+export GENERATING_COUNTERFACTUAL=true
 echo "Phase 2: Launching counterfactual simulation (Types 1-11) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
 python3 main.py "$COUNTY"
 

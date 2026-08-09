@@ -82,9 +82,10 @@ class NewTransmission(SubstepTransitionMessagePassing):
         infected_times = infected_times.clamp(min=0, max=lam_gamma_integrals.size(0) - 1)
 
         integrals[infected_idx] = lam_gamma_integrals[infected_times.long()]
-        edge_network_numbers = edge_attr[0, :]
+        edge_network_numbers = edge_attr[0, :].long().clamp(min=0, max=x_i[:, 4].size(0) - 1)
 
-        I_bar = torch.gather(x_i[:, 4], 0, edge_network_numbers.long()).view(-1)
+        I_bar = torch.gather(x_i[:, 4], 0, edge_network_numbers).view(-1)
+        I_bar = torch.clamp(I_bar, min=1e-5)
 
         will_isolate = x_i[:, 6]
         not_isolated = 1 - will_isolate
@@ -202,7 +203,11 @@ class NewTransmission(SubstepTransitionMessagePassing):
         new_stages[:, 0] = 0.0
 
         logits = torch.zeros(N, 2, device=device)
-        logits[:, 1] = torch.log(torch.tensor(proportion / (1 - proportion), device=device))
+        val = proportion / (1 - proportion)
+        if isinstance(val, torch.Tensor):
+            logits[:, 1] = torch.log(val.to(device))
+        else:
+            logits[:, 1] = torch.log(torch.tensor(val, device=device, dtype=torch.float))
 
         samples = F.gumbel_softmax(logits, tau=tau, hard=hard)
         infected_mask = samples[:, 1]
