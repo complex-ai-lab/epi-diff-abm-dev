@@ -11,7 +11,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --mem=47G
-#SBATCH --time=36:00:00
+#SBATCH --time=60:00:00
 #SBATCH --partition=alrodri-a100
 #SBATCH --array=0-152%3
 #SBATCH --output=/home/%u/%x-%A-%a.log
