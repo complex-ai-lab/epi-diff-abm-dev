@@ -1,4 +1,5 @@
 import os
+import sys
 import numpy as np
 from constants import *
 import torch
@@ -277,22 +278,52 @@ def eval_net(sim, runner):
     metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
         cf_types_to_run = range(1, 12)
+        cf_folder_map = {
+            1: "01_static_all_open",
+            2: "02_static_school_closed_work_open",
+            3: "03_static_school_open_work_closed",
+            4: "04_static_all_closed",
+            5: "05_static_school_open_work_factual",
+            6: "06_static_school_open_work_flipped",
+            7: "07_timevar_factual_school_factual_work",
+            8: "08_timevar_flipped_school_factual_work",
+            9: "09_timevar_factual_school_flipped_work",
+            10: "10_timevar_flipped_school_flipped_work",
+            11: "11_timevar_factual_no_vaccines"
+        }
+
+        param_load_phase = 0 if metro_phase == 0 else 2
+        base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
+        param_file = os.path.join(base_dir, "calibrated_params.txt")
+
+        if not os.path.exists(param_file):
+            print(f"\n[ERROR] Calibrated parameter file not found at: '{param_file}'")
+            print(f"[ERROR] Cannot run counterfactual simulations without calibrated parameters.")
+            print(f"[ERROR] Please run model calibration first for county {population} (using run_all_sims.sh or main.py).\n")
+            sys.exit(1)
+
+        try:
+            param_array = np.loadtxt(param_file)
+        except Exception as e:
+            print(f"\n[ERROR] Failed to load calibrated parameters from '{param_file}': {e}\n")
+            sys.exit(1)
+
+        param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
+        param_tensor = param_tensor[:, None] if param_tensor.ndim == 1 else param_tensor
 
         for cf_type in cf_types_to_run:
             sim.config['simulation_metadata']['COUNTERFACTUAL_TYPE'] = cf_type
+            cf_name = cf_folder_map.get(cf_type, f"type_{cf_type}")
+            print(f"\n=======================================================")
+            print(f"Running Counterfactual Type {cf_type} ({cf_name}) for FIPS {population}")
+            print(f"=======================================================")
+
             all_age_proportions = []
-            
             num_iterations = 30
 
             for num in range(num_iterations):
                 runner.state = deep_clone_state(initial_state)
                 runner.state_trajectory = []
-
-                param_load_phase = 0 if metro_phase == 0 else 2
-                base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
-                param_array = np.loadtxt(os.path.join(base_dir, "calibrated_params.txt"))
-                param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
-                param_tensor = param_tensor[:, None] if param_tensor.ndim == 1 else param_tensor
 
                 tensorfunc_R = map_and_replace_tensor(learnable_params[1][0])
                 tensorfunc_R(runner, True, param_tensor[:num_weeks], mode_calibrate=True)
