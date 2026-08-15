@@ -1073,25 +1073,24 @@ def add_counterfactual_ranking_slide(prs):
     p.font.bold = True
     p.font.color.rgb = RGBColor(27, 38, 59)
 
-    cf_data = load_all_counterfactual_data()
+    baseline_total = cf_data[7]["total_cases"] if (7 in cf_data and cf_data[7]["total_cases"] > 0) else 0.0
 
-    if not cf_data or 7 not in cf_data:
+    if not cf_data or baseline_total == 0:
         shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
         shape.fill.solid()
         shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
         shape.line.color.rgb = RGBColor(210, 215, 225)
         tf_g = shape.text_frame
         p_g = tf_g.paragraphs[0]
-        p_g.text = "Intervention Efficacy Ranking Plot\n(Will be generated dynamically when counterfactual runs complete in all_counterfactual_results/)"
+        p_g.text = "Intervention Efficacy Ranking Plot\n(Will be generated dynamically when counterfactual baseline data completes in all_counterfactual_results/)"
         p_g.alignment = PP_ALIGN.CENTER
         p_g.font.size = Pt(18)
         p_g.font.color.rgb = RGBColor(120, 120, 120)
         return
 
-    baseline_total = cf_data[7]["total_cases"]
     rankings = []
     for cf_id, d in cf_data.items():
-        pct_change = ((d["total_cases"] - baseline_total) / baseline_total) * 100.0
+        pct_change = ((d["total_cases"] - baseline_total) / baseline_total) * 100.0 if baseline_total > 0 else 0.0
         rankings.append((cf_id, d["label"], pct_change))
 
     rankings.sort(key=lambda x: x[2])
