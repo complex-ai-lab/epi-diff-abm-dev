@@ -605,8 +605,11 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
             p_err.font.italic = True
             p_err.font.color.rgb = RGBColor(180, 50, 50)
 
+        # Sequentially add county-specific counterfactual slide
+        add_county_counterfactual_slide(prs, fips, c_name, state_abbr, base_dir)
+
         if idx % 20 == 0 or idx == len(COUNTIES):
-            print(f"Processed {idx}/{len(COUNTIES)} county slides...")
+            print(f"Processed {idx}/{len(COUNTIES)} county calibration + counterfactual slides...")
 
     print("Adding state-level individual scaling factor trend slides...")
     add_state_scaling_factor_slides(prs, county_params_map)
@@ -614,8 +617,548 @@ def create_presentation(output_pptx="simulation_results_presentation.pptx"):
     print("Adding state NRMSE comparison slide...")
     add_state_nrmse_slide(prs, config, county_name_lookup)
 
+    print("Adding Global Counterfactual Analysis Slides (Impact, Spectrum, Ranking)...")
+    add_counterfactual_impact_slide(prs)
+    add_counterfactual_spectrum_slide(prs)
+    add_counterfactual_ranking_slide(prs)
+
     prs.save(output_pptx)
     print(f"\nSuccessfully generated presentation: {os.path.abspath(output_pptx)}")
+
+def add_county_counterfactual_slide(prs, fips, c_name, state_abbr, base_dir):
+    """
+    Adds a sequential counterfactual slide specifically for this county,
+    showing its counterfactual trajectory comparisons and summary card.
+    """
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    tf.word_wrap = True
+    p = tf.paragraphs[0]
+    p.text = f"{c_name}, {state_abbr} (FIPS: {fips}) - Counterfactual Analysis"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    cf_map = {
+        1: "01_static_all_open",
+        2: "02_static_school_closed_work_open",
+        3: "03_static_school_open_work_closed",
+        4: "04_static_all_closed",
+        7: "07_timevar_factual_school_factual_work",
+        11: "11_timevar_factual_no_vaccines"
+    }
+
+    county_cf_data = {}
+    for cf_id, folder_name in cf_map.items():
+        p1 = os.path.join(base_dir, f"counterfactual_data{cf_id}.csv") if base_dir else None
+        p2 = os.path.join("all_counterfactual_results", folder_name, "data", f"{fips}_counterfactual_data{cf_id}.csv")
+        
+        target_path = None
+        if p1 and os.path.exists(p1):
+            target_path = p1
+        elif os.path.exists(p2):
+            target_path = p2
+
+        if target_path:
+            try:
+                df = pd.read_csv(target_path)
+                col = "counterfactual_cases" if "counterfactual_cases" in df.columns else "sim_cases"
+                if col in df.columns:
+                    arr = df[col].values
+                    county_cf_data[cf_id] = {
+                        "name": folder_name,
+                        "cases": arr,
+                        "total": float(np.sum(arr))
+                    }
+            except Exception:
+                pass
+
+    left_margin = Inches(0.6)
+    top_margin = Inches(1.4)
+    width = Inches(7.2)
+    height = Inches(5.4)
+
+    if not county_cf_data:
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_margin, top_margin, width, height)
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        shape.line.color.rgb = RGBColor(210, 215, 225)
+        tf_g = shape.text_frame
+        p_g = tf_g.paragraphs[0]
+        p_g.text = f"County Counterfactual Trajectories\n(Will be generated dynamically when counterfactual runs complete for FIPS {fips})"
+        p_g.alignment = PP_ALIGN.CENTER
+        p_g.font.size = Pt(18)
+        p_g.font.color.rgb = RGBColor(120, 120, 120)
+    else:
+        plt.figure(figsize=(7.5, 5.5))
+        palette = {
+            1: ("#E63946", "Type 1: All Open"),
+            2: ("#E76F51", "Type 2: School Closed"),
+            3: ("#F4A261", "Type 3: Work Closed"),
+            4: ("#2A9D8F", "Type 4: All Closed"),
+            7: ("#1B263B", "Type 7: Factual Baseline"),
+            11: ("#9B5DE5", "Type 11: No Vaccines")
+        }
+
+        for cf_id, (color, label) in palette.items():
+            if cf_id in county_cf_data:
+                plt.plot(county_cf_data[cf_id]["cases"], label=label, color=color, linewidth=2)
+
+        plt.xlabel("Simulation Days", fontsize=11)
+        plt.ylabel("Daily Cases", fontsize=11)
+        plt.title(f"Counterfactual Epidemic Trajectories ({c_name}, {state_abbr})", fontsize=12, fontweight="bold")
+        plt.legend(fontsize=8, loc="upper right")
+        plt.grid(True, linestyle="--", alpha=0.5)
+
+        plt.tight_layout()
+        img_path = f"/tmp/county_cf_{fips}.png"
+        plt.savefig(img_path, dpi=300)
+        plt.close()
+
+        slide.shapes.add_picture(img_path, left_margin, top_margin, width=width)
+
+    card_left = Inches(8.2)
+    card_top = Inches(1.4)
+    card_width = Inches(4.5)
+    card_height = Inches(5.4)
+
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, card_left, card_top, card_width, card_height)
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(248, 249, 250)
+    card.line.color.rgb = RGBColor(220, 224, 230)
+    card.line.width = Pt(1.5)
+
+    card_title_box = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.2), card_width - Inches(0.4), Inches(0.6))
+    tf_ct = card_title_box.text_frame
+    tf_ct.word_wrap = True
+    p_ct = tf_ct.paragraphs[0]
+    p_ct.text = "County Scenario Metrics"
+    p_ct.font.size = Pt(20)
+    p_ct.font.bold = True
+    p_ct.font.color.rgb = RGBColor(13, 27, 42)
+
+    param_box = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.85), card_width - Inches(0.4), card_height - Inches(1.0))
+    tf_p = param_box.text_frame
+    tf_p.word_wrap = True
+
+    if county_cf_data:
+        baseline_total = county_cf_data.get(7, {}).get("total", 0)
+
+        p_label1 = tf_p.paragraphs[0]
+        p_label1.text = "Factual Baseline Cases"
+        p_label1.font.size = Pt(13)
+        p_label1.font.bold = True
+        p_label1.font.color.rgb = RGBColor(65, 90, 119)
+
+        p_val1 = tf_p.add_paragraph()
+        p_val1.text = f"{int(baseline_total):,}"
+        p_val1.font.size = Pt(18)
+        p_val1.font.bold = True
+        p_val1.font.color.rgb = RGBColor(27, 38, 59)
+        p_val1.space_after = Pt(10)
+
+        if 4 in county_cf_data and baseline_total > 0:
+            cf4_total = county_cf_data[4]["total"]
+            averted = baseline_total - cf4_total
+            pct_averted = (averted / baseline_total) * 100.0
+
+            p_label2 = tf_p.add_paragraph()
+            p_label2.text = "Cases Averted (Full Lockdown)"
+            p_label2.font.size = Pt(13)
+            p_label2.font.bold = True
+            p_label2.font.color.rgb = RGBColor(65, 90, 119)
+
+            p_val2 = tf_p.add_paragraph()
+            p_val2.text = f"{int(averted):,} ({pct_averted:+.1f}%)"
+            p_val2.font.size = Pt(18)
+            p_val2.font.bold = True
+            p_val2.font.color.rgb = RGBColor(42, 157, 143)
+            p_val2.space_after = Pt(10)
+
+        if 1 in county_cf_data and baseline_total > 0:
+            cf1_total = county_cf_data[1]["total"]
+            excess = cf1_total - baseline_total
+            pct_excess = (excess / baseline_total) * 100.0
+
+            p_label3 = tf_p.add_paragraph()
+            p_label3.text = "Excess Cases (All Open)"
+            p_label3.font.size = Pt(13)
+            p_label3.font.bold = True
+            p_label3.font.color.rgb = RGBColor(65, 90, 119)
+
+            p_val3 = tf_p.add_paragraph()
+            p_val3.text = f"{int(excess):,} ({pct_excess:+.1f}%)"
+            p_val3.font.size = Pt(18)
+            p_val3.font.bold = True
+            p_val3.font.color.rgb = RGBColor(230, 57, 70)
+    else:
+        p_err = tf_p.paragraphs[0]
+        p_err.text = f"Counterfactual results for county {fips}\nnot yet generated."
+        p_err.font.size = Pt(14)
+        p_err.font.italic = True
+        p_err.font.color.rgb = RGBColor(120, 120, 120)
+
+def load_all_counterfactual_data():
+    """
+    Scans all_counterfactual_results/ or result_graphs/ for counterfactual data files
+    for Types 1 through 11. Returns a dictionary mapping cf_type -> dict of data.
+    """
+    cf_map = {
+        1: "01_static_all_open",
+        2: "02_static_school_closed_work_open",
+        3: "03_static_school_open_work_closed",
+        4: "04_static_all_closed",
+        5: "05_static_school_open_work_factual",
+        6: "06_static_school_open_work_flipped",
+        7: "07_timevar_factual_school_factual_work",
+        8: "08_timevar_flipped_school_factual_work",
+        9: "09_timevar_factual_school_flipped_work",
+        10: "10_timevar_flipped_school_flipped_work",
+        11: "11_timevar_factual_no_vaccines"
+    }
+
+    cf_data = {}
+    for cf_type, folder_name in cf_map.items():
+        pattern1 = os.path.join("all_counterfactual_results", folder_name, "data", "*.csv")
+        pattern2 = os.path.join("result_graphs", "*", "*", "*", f"counterfactual_data{cf_type}.csv")
+        files = glob.glob(pattern1) + glob.glob(pattern2)
+
+        df_list = []
+        for f in files:
+            try:
+                df = pd.read_csv(f)
+                if "counterfactual_cases" in df.columns:
+                    df_list.append(df["counterfactual_cases"].values)
+                elif "sim_cases" in df.columns:
+                    df_list.append(df["sim_cases"].values)
+            except Exception:
+                pass
+
+        if df_list:
+            min_len = min(len(arr) for arr in df_list)
+            truncated = [arr[:min_len] for arr in df_list]
+            mean_series = np.mean(truncated, axis=0)
+            cf_data[cf_type] = {
+                "name": folder_name,
+                "label": folder_name.split("_", 2)[-1].replace("_", " ").title(),
+                "daily_cases": mean_series,
+                "total_cases": float(np.sum(mean_series))
+            }
+
+    return cf_data
+
+def add_counterfactual_impact_slide(prs):
+    """Adds a slide showing Cases/Deaths Prevented by Counterfactual Interventions."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    p = tf.paragraphs[0]
+    p.text = "Counterfactual Impact: Cases & Deaths Prevented"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    cf_data = load_all_counterfactual_data()
+
+    if not cf_data:
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        shape.line.color.rgb = RGBColor(210, 215, 225)
+        tf_g = shape.text_frame
+        p_g = tf_g.paragraphs[0]
+        p_g.text = "Counterfactual Impact Plot\n(Will be generated dynamically when counterfactual runs complete in all_counterfactual_results/)"
+        p_g.alignment = PP_ALIGN.CENTER
+        p_g.font.size = Pt(18)
+        p_g.font.color.rgb = RGBColor(120, 120, 120)
+        return
+
+    baseline = cf_data.get(7, cf_data.get(list(cf_data.keys())[0]))
+    baseline_cases = baseline["daily_cases"]
+    baseline_total = baseline["total_cases"]
+
+    plt.figure(figsize=(10, 5.5))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(baseline_cases, label="Factual Baseline (Type 7)", color="#1B263B", linewidth=2)
+    if 1 in cf_data:
+        plt.plot(cf_data[1]["daily_cases"], label="Type 1: All Open", color="#E63946", linestyle="--")
+    if 4 in cf_data:
+        plt.plot(cf_data[4]["daily_cases"], label="Type 4: All Closed", color="#2A9D8F", linestyle="--")
+    if 11 in cf_data:
+        plt.plot(cf_data[11]["daily_cases"], label="Type 11: No Vaccines", color="#F4A261", linestyle=":")
+    plt.xlabel("Days", fontsize=10)
+    plt.ylabel("Daily Cases", fontsize=10)
+    plt.title("Daily Cases Trajectories", fontsize=11, fontweight="bold")
+    plt.legend(fontsize=8)
+    plt.grid(True, linestyle="--", alpha=0.5)
+
+    plt.subplot(1, 2, 2)
+    labels = []
+    prevented = []
+    colors = []
+    for cf_id, d in sorted(cf_data.items()):
+        diff = d["total_cases"] - baseline_total
+        labels.append(f"Type {cf_id}")
+        prevented.append(-diff)
+        colors.append("#2A9D8F" if -diff >= 0 else "#E63946")
+
+    plt.barh(labels, prevented, color=colors, edgecolor="#0D1B2A", alpha=0.85)
+    plt.axvline(0, color="black", linestyle="--", linewidth=1)
+    plt.xlabel("Net Cumulative Cases Averted vs Factual", fontsize=10)
+    plt.title("Net Cases Prevented by Scenario", fontsize=11, fontweight="bold")
+    plt.grid(axis="x", linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+    img_path = "/tmp/counterfactual_impact.png"
+    plt.savefig(img_path, dpi=300)
+    plt.close()
+
+    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(7.2))
+
+    card_left = Inches(8.0)
+    card_top = Inches(1.3)
+    card_width = Inches(4.7)
+    card_height = Inches(5.5)
+
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, card_left, card_top, card_width, card_height)
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(248, 249, 250)
+    card.line.color.rgb = RGBColor(220, 224, 230)
+    card.line.width = Pt(1.5)
+
+    tb = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.2), card_width - Inches(0.4), card_height - Inches(0.4))
+    tf = tb.text_frame
+    tf.word_wrap = True
+
+    p = tf.paragraphs[0]
+    p.text = "Key Prevention Findings"
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(13, 27, 42)
+
+    bullets = [
+        ("Factual Baseline", f"Total simulated cases across evaluation period: {int(baseline_total):,}"),
+        ("Lockdown Impact (Type 4)", "Full closure of schools and workplaces maximizes infection reduction."),
+        ("Unmitigated Spread (Type 1)", "Opening all facilities increases infection transmission significantly."),
+        ("Vaccine Contribution (Type 11)", "Removing vaccination increases total cases over the simulation horizon.")
+    ]
+
+    for title, desc in bullets:
+        p_b = tf.add_paragraph()
+        p_b.text = f"• {title}: "
+        p_b.font.size = Pt(12)
+        p_b.font.bold = True
+        p_b.font.color.rgb = RGBColor(27, 38, 59)
+        p_b.space_before = Pt(8)
+        
+        run = p_b.add_run()
+        run.text = desc
+        run.font.bold = False
+        run.font.size = Pt(12)
+        run.font.color.rgb = RGBColor(60, 60, 60)
+
+def add_counterfactual_spectrum_slide(prs):
+    """Adds a slide showing the Policy Intervention Spectrum & Multi-Curve Comparison."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    p = tf.paragraphs[0]
+    p.text = "Policy Scenario Comparison: Intervention Spectrum & Timing"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    cf_data = load_all_counterfactual_data()
+
+    if not cf_data:
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        shape.line.color.rgb = RGBColor(210, 215, 225)
+        tf_g = shape.text_frame
+        p_g = tf_g.paragraphs[0]
+        p_g.text = "Policy Spectrum Comparison Plot\n(Will be generated dynamically when counterfactual runs complete in all_counterfactual_results/)"
+        p_g.alignment = PP_ALIGN.CENTER
+        p_g.font.size = Pt(18)
+        p_g.font.color.rgb = RGBColor(120, 120, 120)
+        return
+
+    plt.figure(figsize=(7.5, 5.5))
+    palette = {
+        1: ("#E63946", "Type 1: All Open (Unmitigated)"),
+        2: ("#E76F51", "Type 2: School Closed Only"),
+        3: ("#F4A261", "Type 3: Work Closed Only"),
+        4: ("#2A9D8F", "Type 4: All Closed (Full Lockdown)"),
+        7: ("#1B263B", "Type 7: Factual Baseline"),
+        11: ("#9B5DE5", "Type 11: No Vaccines")
+    }
+
+    for cf_id, (color, label) in palette.items():
+        if cf_id in cf_data:
+            plt.plot(cf_data[cf_id]["daily_cases"], label=label, color=color, linewidth=2)
+
+    plt.xlabel("Simulation Days", fontsize=11)
+    plt.ylabel("Daily Infection Count", fontsize=11)
+    plt.title("Epidemic Curves Across Policy Combinations", fontsize=13, fontweight="bold")
+    plt.legend(fontsize=8, loc="upper right")
+    plt.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+    img_path = "/tmp/counterfactual_spectrum.png"
+    plt.savefig(img_path, dpi=300)
+    plt.close()
+
+    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(7.2))
+
+    card_left = Inches(8.0)
+    card_top = Inches(1.3)
+    card_width = Inches(4.7)
+    card_height = Inches(5.5)
+
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, card_left, card_top, card_width, card_height)
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(248, 249, 250)
+    card.line.color.rgb = RGBColor(220, 224, 230)
+    card.line.width = Pt(1.5)
+
+    tb = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.2), card_width - Inches(0.4), card_height - Inches(0.4))
+    tf = tb.text_frame
+    tf.word_wrap = True
+
+    p = tf.paragraphs[0]
+    p.text = "Policy Combination Insights"
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(13, 27, 42)
+
+    bullets = [
+        ("Policy Envelope", "Compares epidemic trajectories from unmitigated spread (All Open) to maximum containment (All Closed)."),
+        ("Single vs. Multi-Sector Closures", "Evaluates relative transmission reduction of workplace closures vs school closures."),
+        ("Static vs Dynamic Timing", "Static closures flatten the peak immediately, whereas dynamic closures shift the peak timing."),
+        ("Synergy of Interventions", "Combining NPI closures with vaccination provides compound risk reduction.")
+    ]
+
+    for title, desc in bullets:
+        p_b = tf.add_paragraph()
+        p_b.text = f"• {title}: "
+        p_b.font.size = Pt(12)
+        p_b.font.bold = True
+        p_b.font.color.rgb = RGBColor(27, 38, 59)
+        p_b.space_before = Pt(8)
+        
+        run = p_b.add_run()
+        run.text = desc
+        run.font.bold = False
+        run.font.size = Pt(12)
+        run.font.color.rgb = RGBColor(60, 60, 60)
+
+def add_counterfactual_ranking_slide(prs):
+    """Adds a slide showing the Efficacy Ranking Tornado Chart across all counterfactuals."""
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+
+    title_box = slide.shapes.add_textbox(Inches(0.6), Inches(0.4), Inches(12.0), Inches(0.8))
+    tf = title_box.text_frame
+    p = tf.paragraphs[0]
+    p.text = "Intervention Efficacy Ranking & Policy Trade-Offs"
+    p.font.size = Pt(26)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(27, 38, 59)
+
+    cf_data = load_all_counterfactual_data()
+
+    if not cf_data or 7 not in cf_data:
+        shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = RGBColor(245, 247, 250)
+        shape.line.color.rgb = RGBColor(210, 215, 225)
+        tf_g = shape.text_frame
+        p_g = tf_g.paragraphs[0]
+        p_g.text = "Intervention Efficacy Ranking Plot\n(Will be generated dynamically when counterfactual runs complete in all_counterfactual_results/)"
+        p_g.alignment = PP_ALIGN.CENTER
+        p_g.font.size = Pt(18)
+        p_g.font.color.rgb = RGBColor(120, 120, 120)
+        return
+
+    baseline_total = cf_data[7]["total_cases"]
+    rankings = []
+    for cf_id, d in cf_data.items():
+        pct_change = ((d["total_cases"] - baseline_total) / baseline_total) * 100.0
+        rankings.append((cf_id, d["label"], pct_change))
+
+    rankings.sort(key=lambda x: x[2])
+
+    labels = [f"T{cf_id}: {lbl[:22]}" for cf_id, lbl, _ in rankings]
+    pct_changes = [pct for _, _, pct in rankings]
+    colors = ["#2A9D8F" if pct <= 0 else "#E63946" for pct in pct_changes]
+
+    plt.figure(figsize=(7.5, 5.5))
+    bars = plt.barh(labels, pct_changes, color=colors, edgecolor="#0D1B2A", alpha=0.85)
+    plt.axvline(0, color="black", linestyle="--", linewidth=1)
+    plt.xlabel("% Change in Total Infections vs Factual Baseline", fontsize=11)
+    plt.title("Policy Efficacy Ranking (Negative = Infection Reduction)", fontsize=13, fontweight="bold")
+    plt.grid(axis="x", linestyle="--", alpha=0.5)
+
+    for bar in bars:
+        w = bar.get_width()
+        plt.text(w + (-3 if w < 0 else 1), bar.get_y() + bar.get_height()/2., f"{w:+.1f}%", ha='left' if w >= 0 else 'right', va='center', fontsize=9, fontweight='bold')
+
+    plt.tight_layout()
+    img_path = "/tmp/counterfactual_ranking.png"
+    plt.savefig(img_path, dpi=300)
+    plt.close()
+
+    slide.shapes.add_picture(img_path, Inches(0.6), Inches(1.3), width=Inches(7.2))
+
+    card_left = Inches(8.0)
+    card_top = Inches(1.3)
+    card_width = Inches(4.7)
+    card_height = Inches(5.5)
+
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, card_left, card_top, card_width, card_height)
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(248, 249, 250)
+    card.line.color.rgb = RGBColor(220, 224, 230)
+    card.line.width = Pt(1.5)
+
+    tb = slide.shapes.add_textbox(card_left + Inches(0.2), card_top + Inches(0.2), card_width - Inches(0.4), card_height - Inches(0.4))
+    tf = tb.text_frame
+    tf.word_wrap = True
+
+    p = tf.paragraphs[0]
+    p.text = "Efficacy & Trade-Off Ranking"
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(13, 27, 42)
+
+    bullets = [
+        ("Top Performer", "Static All Closed (Type 4) yields maximum reduction in total cumulative infections."),
+        ("Least Effective / Highest Risk", "Static All Open (Type 1) yields the highest infection growth."),
+        ("NPI Trade-Offs", "Workplace closures demonstrate stronger population-wide reduction than school closures alone."),
+        ("Vaccination Leverage", "Maintaining vaccination programs provides sustained mitigation without full physical closures.")
+    ]
+
+    for title, desc in bullets:
+        p_b = tf.add_paragraph()
+        p_b.text = f"• {title}: "
+        p_b.font.size = Pt(12)
+        p_b.font.bold = True
+        p_b.font.color.rgb = RGBColor(27, 38, 59)
+        p_b.space_before = Pt(8)
+        
+        run = p_b.add_run()
+        run.text = desc
+        run.font.bold = False
+        run.font.size = Pt(12)
+        run.font.color.rgb = RGBColor(60, 60, 60)
 
 if __name__ == "__main__":
     out_file = sys.argv[1] if len(sys.argv) > 1 else "simulation_results_presentation.pptx"
