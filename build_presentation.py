@@ -108,18 +108,20 @@ def get_county_folder_and_graph(population, config):
 
     calibrated_params_file = os.path.join(base_dir, "calibrated_params.txt")
 
-    subdirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d)) and d.isdigit()]
-    subdirs = sorted(subdirs, key=lambda x: int(x), reverse=True)
+    # Target epoch 250 specifically, or closest available to 250
+    target_img_path = os.path.join(base_dir, "250", "simulation_results.png")
+    if os.path.exists(target_img_path):
+        graph_path = target_img_path
+    else:
+        subdirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d)) and d.isdigit()]
+        subdirs = sorted(subdirs, key=lambda x: (abs(int(x) - 250), -int(x)))
 
-    graph_path = None
-    latest_epoch = None
-
-    for epoch_dir in subdirs:
-        img_path = os.path.join(base_dir, epoch_dir, "simulation_results.png")
-        if os.path.exists(img_path):
-            graph_path = img_path
-            latest_epoch = epoch_dir
-            break
+        graph_path = None
+        for epoch_dir in subdirs:
+            img_path = os.path.join(base_dir, epoch_dir, "simulation_results.png")
+            if os.path.exists(img_path):
+                graph_path = img_path
+                break
 
     return base_dir, graph_path, calibrated_params_file
 
