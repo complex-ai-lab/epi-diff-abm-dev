@@ -71,13 +71,11 @@ class NewTransmission(SubstepTransitionMessagePassing):
         SFInfector,
         lam_gamma_integrals,
     ):
-        age_idx = x_i[:, 0].long().clamp(min=0, max=SFSusceptibility.size(0) - 1)
-        S_A_s = SFSusceptibility[age_idx]
-        stage_idx = x_j[:, 1].long().clamp(min=0, max=SFInfector.size(0) - 1)
-        A_s_i = SFInfector[stage_idx]
+        S_A_s = SFSusceptibility[x_i[:, 0].long()]
+        A_s_i = SFInfector[x_j[:, 1].long()]
         B_n = edge_attr[1, :]
         integrals = torch.zeros_like(B_n)
-        infected_idx = (x_j[:, 2] == self.INFECTED_VAR)
+        infected_idx = x_j[:, 2].bool()
         infected_times = t - x_j[infected_idx, 3] - 1
         infected_times = infected_times.clamp(min=0, max=lam_gamma_integrals.size(0) - 1)
 
