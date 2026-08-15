@@ -1071,9 +1071,8 @@ def add_counterfactual_ranking_slide(prs):
     p.text = "Intervention Efficacy Ranking & Policy Trade-Offs"
     p.font.size = Pt(26)
     p.font.bold = True
-    p.font.color.rgb = RGBColor(27, 38, 59)
-
-    baseline_total = cf_data[7]["total_cases"] if (7 in cf_data and cf_data[7]["total_cases"] > 0) else 0.0
+    cf_data = load_all_counterfactual_data()
+    baseline_total = cf_data[7]["total_cases"] if (cf_data and 7 in cf_data and cf_data[7]["total_cases"] > 0) else 0.0
 
     if not cf_data or baseline_total == 0:
         shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.6), Inches(1.4), Inches(12.1), Inches(5.4))
