@@ -16,3 +16,8 @@ networks/*.pkl
 populations/
 result_graphs/
 results/
+
+# Presentation generation scripts and presentations
+build_presentation.py
+create_presentation.sh
+*.pptx
