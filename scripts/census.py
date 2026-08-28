@@ -13,6 +13,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def to_numeric_ignore(df):
+    """Column-wise pd.to_numeric that leaves non-convertible columns untouched.
+
+    Replaces the removed ``pd.to_numeric(..., errors='ignore')`` behaviour
+    (dropped in pandas 2.2/3.0).
+    """
+    def _convert(col):
+        try:
+            return pd.to_numeric(col)
+        except (ValueError, TypeError):
+            return col
+
+    return df.apply(_convert)
+
+
 state = os.getenv("TARGET_STATE", "OH")
 target_counties_env = os.getenv("TARGET_COUNTIES")
 if target_counties_env:
@@ -66,7 +82,7 @@ def obtain_household_size_distribution(state, county_fips, census_api_key):
         # construct dataframe
         df = pd.DataFrame(results[1:], columns=results[0])
         # convert all columns to numeric
-        df = df.apply(pd.to_numeric, errors='ignore')
+        df = to_numeric_ignore(df)
         # Create new columns based on the dictionary mapping
         print(f"Obtaining Household Data")
         for new_column, formula in household_size_acs_var_map.items():
@@ -157,7 +173,7 @@ def obtain_age_distribution(state, county_fips, census_api_key):
         # construct dataframe
         df = pd.DataFrame(results[1:], columns=results[0])
         # convert all columns to numeric
-        df = df.apply(pd.to_numeric, errors='ignore')
+        df = to_numeric_ignore(df)
         # Create new columns based on the dictionary mapping
         # print('-------------------')
         print(f"Obtaining Age Data")
@@ -253,7 +269,7 @@ def obtain_occupation_distribution(state, county_fips, census_api_key):
     # construct dataframe
     df = pd.DataFrame(df[1:], columns=df[0])
     # convert all columns to numeric
-    df = df.apply(pd.to_numeric, errors='ignore')
+    df = to_numeric_ignore(df)
     # aggregate by sector but do not sort by sector
     df = df.groupby(['Occupation'], sort=False).sum()
     # reset index

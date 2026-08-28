@@ -105,3 +105,18 @@ This project includes code from the following sources. We are grateful for their
 
 **agenttorch**
 *   **Description**: Our `agent_torch` and `covid_abm` folders are based on the [agenttorch](https://github.com/agenttorch/agenttorch) repository.
+
+
+
+## Notes
+With python 3.11, to run the data_prep.sh script, run the following command first
+
+```bash
+python -m pip uninstall -y numpy pandas matplotlib && python -m pip install --no-cache-dir "numpy==1.26.4" "pandas==1.5.3" "matplotlib==3.7.5" "covidcast==0.2.2" "setuptools<81"
+```
+
+Before running calibration and counterfactual generation, run
+
+```bash
+python -m pip uninstall -y numpy pandas matplotlib && python -m pip install --no-cache-dir "numpy==2.4.6" "pandas==3.0.3" "matplotlib==3.10.9"
+```

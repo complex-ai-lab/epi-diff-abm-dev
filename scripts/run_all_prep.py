@@ -49,9 +49,15 @@ def main():
         state_to_counties[state_abbr].append(county)
         
     print(f"Loaded {len(COUNTIES)} unique counties across {len(state_to_counties)} states.")
-    
+
+    # Optional resume point: set START_STATE=KY to skip states that sort before it.
+    start_state = os.getenv("START_STATE")
+
     # Run data_prep.sh for each state
     for state, state_counties in sorted(state_to_counties.items()):
+        if start_state and state < start_state:
+            print(f"Skipping already-completed state: {state}")
+            continue
         counties_str = ','.join(state_counties)
         print(f"\n=======================================================")
         print(f"Running data preparation for State: {state}")

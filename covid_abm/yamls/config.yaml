@@ -49,7 +49,7 @@ simulation_metadata:
   num_episodes: 5
   num_steps_per_episode: 182
   num_substeps_per_step: 1
-  population_dir: /home/facundoy/research/epi-diff-abm-dev/populations/pop39013
+  population_dir: /home/pkbiswas/COVID-ABM/epi-diff-abm-dev/populations/pop39013
   quarantine_days: 12
   test_ineligible_days: 2
   test_result_delay_days: 3
