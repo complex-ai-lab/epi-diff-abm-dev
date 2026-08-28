@@ -9,7 +9,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:1 
 #SBATCH --mem=47G
 #SBATCH --time=36:00:00
 #SBATCH --partition=alrodri-a100
@@ -82,7 +82,12 @@ ln -s ../constants.py constants.py
 cp -r ../covid_abm covid_abm
 export GENERATING_COUNTERFACTUAL=false
 
-echo "Launching simulation for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
+# Reproducibility: base seed (override by exporting SEED before sbatch) and the
+# cuBLAS workspace setting required for torch deterministic algorithms.
+export SEED="${SEED:-42}"
+export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
+
+echo "Launching simulation for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES (SEED=$SEED)"
 python3 main.py "$COUNTY"
 
 echo "Simulation completed for county: $COUNTY"

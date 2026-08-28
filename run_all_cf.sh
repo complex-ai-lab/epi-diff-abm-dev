@@ -83,7 +83,12 @@ ln -s ../constants.py constants.py
 cp -r ../covid_abm covid_abm
 export GENERATING_COUNTERFACTUAL=true
 
-echo "Launching counterfactual simulation (Types 1-11) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
+# Reproducibility: base seed (override by exporting SEED before sbatch) and the
+# cuBLAS workspace setting required for torch deterministic algorithms.
+export SEED="${SEED:-42}"
+export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
+
+echo "Launching counterfactual simulation (Types 1-11) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES (SEED=$SEED)"
 python3 main.py "$COUNTY"
 
 echo "Counterfactual simulations completed for county: $COUNTY"

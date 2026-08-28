@@ -82,6 +82,11 @@ ln -s ../constants.py constants.py
 # Copy config folder
 cp -r ../covid_abm covid_abm
 
+# Reproducibility: base seed (override by exporting SEED before sbatch) and the
+# cuBLAS workspace setting required for torch deterministic algorithms.
+export SEED="${SEED:-42}"
+export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
+
 # --- PHASE 1: MODEL CALIBRATION ---
 export GENERATING_COUNTERFACTUAL=false
 echo "Phase 1: Launching model calibration (501 epochs) for county: $COUNTY on GPU: $CUDA_VISIBLE_DEVICES"
