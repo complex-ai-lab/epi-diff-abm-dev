@@ -77,6 +77,7 @@ ln -s ../agent_torch agent_torch
 ln -s ../abm_nets.py abm_nets.py
 ln -s ../main.py main.py
 ln -s ../constants.py constants.py
+ln -s ../.env .env  # so NETWORKS_DIR (scratch path) is picked up inside the workspace
 
 # Copy the config folder (so this run has an isolated config.yaml)
 cp -r ../covid_abm covid_abm

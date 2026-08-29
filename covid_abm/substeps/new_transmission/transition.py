@@ -55,6 +55,25 @@ class NewTransmission(SubstepTransitionMessagePassing):
             "INFECTED_TO_RECOVERED_TIME"
         ]
 
+        # --- Configurable immunity waning (R -> S) ----------------------------
+        # Selected before the run via config.yaml; not learnable, not a
+        # counterfactual. Modes:
+        #   "none"       -> existing behaviour: S -> E -> I -> R (no return to S)
+        #   "fixed"      -> every recovered agent returns to S exactly
+        #                   RECOVERED_TO_SUSCEPTIBLE_TIME days after entering R
+        #   "stochastic" -> every recovered agent has a daily probability
+        #                   p = 1 - exp(-WANING_RATE) of returning to S
+        sim_md = self.config["simulation_metadata"]
+        self.IMMUNITY_WANING_MODE = sim_md.get("IMMUNITY_WANING_MODE", "none")
+        self.RECOVERED_TO_SUSCEPTIBLE_TIME = sim_md.get(
+            "RECOVERED_TO_SUSCEPTIBLE_TIME", 100
+        )
+        self.WANING_RATE = sim_md.get("WANING_RATE", 0.01)
+        # Sentinel "no scheduled transition" time, safely past the end of a run
+        # (INFINITY_TIME in the config is smaller than num_steps_per_episode, so
+        # it cannot be reused here for the fixed-mode timer).
+        self.WANING_NO_TRANSITION_TIME = 10 * self.num_timesteps
+
         self.mode = self.config["simulation_metadata"]["EXECUTION_MODE"]
         self.st_bernoulli = StraightThroughBernoulli.apply
 
@@ -610,6 +629,60 @@ class NewTransmission(SubstepTransitionMessagePassing):
         updated_next_stage_times = self.update_transition_times(
             t, agents_next_stage_times, newly_exposed_today, current_stages
         )
+
+        # --- Configurable immunity waning (R -> S) ---------------------------
+        # Runs after the normal S->E->I->R progression. It only ever moves
+        # agents that are in R *after* this timestep's progression back to S,
+        # so the existing S->E, E->I, I->R logic is untouched. Vaccinated
+        # agents are represented with RECOVERED_VAR (see apply_vaccines), so
+        # this waning applies to vaccine-derived immunity as well.
+        if self.IMMUNITY_WANING_MODE == "fixed":
+            # Schedule R -> S once, when an agent first enters R (covers both
+            # I -> R and vaccination S -> R). Do not touch the timer again on
+            # later timesteps.
+            newly_recovered = (current_stages != self.RECOVERED_VAR) & (
+                updated_stages == self.RECOVERED_VAR
+            )
+            updated_next_stage_times = torch.where(
+                newly_recovered,
+                torch.full_like(
+                    updated_next_stage_times, t + self.RECOVERED_TO_SUSCEPTIBLE_TIME
+                ),
+                updated_next_stage_times,
+            )
+            # Fire the scheduled transition once the timer is reached. A
+            # just-recovered agent has timer t + RECOVERED_TO_SUSCEPTIBLE_TIME
+            # (> t), so it is never waned in the same timestep it recovers.
+            waned = (updated_stages == self.RECOVERED_VAR) & (
+                updated_next_stage_times <= t
+            )
+            updated_stages = torch.where(
+                waned,
+                torch.full_like(updated_stages, self.SUSCEPTIBLE_VAR),
+                updated_stages,
+            )
+            updated_next_stage_times = torch.where(
+                waned,
+                torch.full_like(
+                    updated_next_stage_times, self.WANING_NO_TRANSITION_TIME
+                ),
+                updated_next_stage_times,
+            )
+        elif self.IMMUNITY_WANING_MODE == "stochastic":
+            # Only agents that were already in R at the *start* of this
+            # timestep are eligible, so an agent that transitioned I -> R (or
+            # S -> R via vaccination) this timestep cannot immediately wane.
+            already_recovered = (current_stages == self.RECOVERED_VAR) & (
+                updated_stages == self.RECOVERED_VAR
+            )
+            waning_probability = 1.0 - math.exp(-self.WANING_RATE)
+            waning_draw = torch.rand_like(updated_stages.float())
+            waning_mask = already_recovered & (waning_draw < waning_probability)
+            updated_stages = torch.where(
+                waning_mask,
+                torch.full_like(updated_stages, self.SUSCEPTIBLE_VAR),
+                updated_stages,
+            )
 
         updated_infected_times = self.update_infected_times(
             t, agents_infected_time, newly_exposed_today
