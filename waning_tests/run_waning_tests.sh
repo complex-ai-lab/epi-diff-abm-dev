@@ -26,6 +26,9 @@ GROUP="${2:-all}"
 export SEED="${SEED:-42}"
 export CUBLAS_WORKSPACE_CONFIG="${CUBLAS_WORKSPACE_CONFIG:-:4096:8}"
 export GENERATING_COUNTERFACTUAL=false
+# abm_nets.py imports pyplot without forcing a backend; pin a headless one so
+# the run does not depend on $DISPLAY (interactive Tk aborts under torch.compile).
+export MPLBACKEND="${MPLBACKEND:-Agg}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -38,8 +41,11 @@ CONFIG="covid_abm/yamls/config.yaml"
 DATE="202010-202104"
 RG_DIR="result_graphs/${FIPS}/${DATE}/0.0005_3_5_True_True_False_metro_0"
 PROP_SRC="${RG_DIR}/training_proportions.csv"
+PARAMS_SRC="${RG_DIR}/calibrated_params.txt"
+# aligned simulated-vs-actual daily cases written by abm_nets.py on the last epoch
+GEN_SRC="results/${FIPS}/0.0005_3_5_metro_0/generated_factual.csv"
 
-DATA_DIR="waning_tests/data"
+DATA_DIR="waning_tests/data/${FIPS}"
 BAK_DIR="waning_tests/_backup"
 mkdir -p "$DATA_DIR" "$BAK_DIR"
 
@@ -74,7 +80,9 @@ run_one() {
     $PY waning_tests/set_waning_config.py "$@"
     $PY main.py "$FIPS"
     cp "$PROP_SRC" "${DATA_DIR}/${label}.csv"
-    echo "[info] -> ${DATA_DIR}/${label}.csv"
+    [[ -f "$GEN_SRC" ]] && cp "$GEN_SRC" "${DATA_DIR}/${label}_cases.csv"
+    [[ -f "$PARAMS_SRC" ]] && cp "$PARAMS_SRC" "${DATA_DIR}/${label}_params.txt"
+    echo "[info] -> ${DATA_DIR}/${label}.csv (+ ${label}_cases.csv, ${label}_params.txt)"
 }
 
 if [[ "$GROUP" == "none" || "$GROUP" == "all" ]]; then

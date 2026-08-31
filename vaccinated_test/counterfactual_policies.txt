@@ -1,0 +1,74 @@
+================================================================================
+COUNTERFACTUAL POLICIES  (COUNTERFACTUAL_TYPE 1..11)
+================================================================================
+Defined in  covid_abm/substeps/new_transmission/transition.py  ->  forward(),
+`logic_map`.  Each policy overrides the county's daily school / workplace (occ)
+mobility interventions that feed apply_intervention_fast().
+
+Per-network intervention value, per day:
+    0  = "open"    -> keep a random 75-100% of that network's edges that day
+    1  = "closed"  -> keep a random  0-25% of that network's edges that day
+The kept fraction and the kept-edge subset are random draws each day. Under CRN
+(GENERATING_COUNTERFACTUAL) those draws are keyed on (seed, iteration, day,
+network) and NOT on the policy number, so any two policies that pass the same
+value on a given day realise the same network that day.
+
+Logic tokens used below:
+    0   -> force the value to 0 (open)  for every day
+    1   -> force the value to 1 (closed) for every day
+    F   -> "factual": use the county's real recorded value for that day
+    CF  -> "counterfactual flip": use 1 - factual for that day
+
+                     school          workplace (occ)
+--------------------------------------------------------------------------------
+ 1  static all-open                     0               0
+        Schools and workplaces held fully open the entire window.
+
+ 2  static school-closed, work-open     1               0
+        Schools held closed all window, workplaces held open all window.
+
+ 3  static school-open, work-closed     0               1
+        Schools held open all window, workplaces held closed all window.
+
+ 4  static all-closed                   1               1
+        Schools and workplaces held closed the entire window.
+
+ 5  static school-open, work-factual    0               F
+        Schools forced open; workplaces follow the real policy timeline.
+
+ 6  static school-open, work-flipped    0               CF
+        Schools forced open; workplace policy inverted vs reality
+        (open<->closed swapped day by day).
+
+ 7  factual school, factual work        F               F
+        The factual baseline: both networks follow the real policy timeline.
+        This is the reference the other counterfactuals are compared against.
+
+ 8  flipped school, factual work        CF              F
+        School policy inverted vs reality; workplaces as they really were.
+
+ 9  factual school, flipped work        F               CF
+        Schools as they really were; workplace policy inverted vs reality.
+
+10  flipped school, flipped work        CF              CF
+        Both school and workplace policy inverted vs reality.
+
+11  factual school, factual work,       F               F      + vaccines = 0
+    NO vaccines
+        Identical mobility to policy 7, but the vaccination rollout is removed
+        (num_vaccines forced to 0 every day). Isolates the effect of vaccines.
+
+================================================================================
+NOTE ON COUNTIES WITH FLAT INTERVENTIONS
+================================================================================
+For a county whose factual school and occ series are constant 0 for the whole
+window (true for ~100 of the 154 counties, incl. all of Alabama), F == 0 and
+CF == 1, so the 11 policies collapse to 5 distinct experiments:
+    {1, 5, 7}  ==  (0, 0)
+    {2, 8}     ==  (1, 0)
+    {3, 6, 9}  ==  (0, 1)
+    {4, 10}    ==  (1, 1)
+    {11}       ==  (0, 0) with vaccines removed
+They only look different in older non-CRN runs, where the difference is
+Monte-Carlo noise. Pick a county with a time-varying factual series (e.g. NY
+36003) to get 11 genuinely distinct counterfactuals.

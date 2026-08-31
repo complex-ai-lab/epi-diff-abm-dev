@@ -10,6 +10,24 @@ import csv
 import pandas as pd
 
 
+# Human-readable name of each counterfactual policy, keyed by COUNTERFACTUAL_TYPE.
+# "factual" = the county's real school/occ intervention series; "flipped" = 1 -
+# factual. Used in plot titles and the counterfactual_policies.txt reference.
+CF_POLICY_DESC = {
+    1:  "all-open (school open, work open)",
+    2:  "school-closed, work-open",
+    3:  "school-open, work-closed",
+    4:  "all-closed (school closed, work closed)",
+    5:  "school-open, work-factual",
+    6:  "school-open, work-flipped",
+    7:  "factual school, factual work",
+    8:  "flipped school, factual work",
+    9:  "factual school, flipped work",
+    10: "flipped school, flipped work",
+    11: "factual school, factual work, NO vaccines",
+}
+
+
 class LearnableParams(nn.Module):
     def __init__(self, num_params, context_dim=3, device=DEVICE):
         super().__init__()
@@ -99,7 +117,11 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
     metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
         labels_np = labels.cpu().detach().numpy()
-        output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
+        # CF_OUTPUT_DIR redirects every counterfactual artifact away from
+        # result_graphs/... so an existing calibration/CF result is never
+        # overwritten. Unset -> original behaviour.
+        cf_out = os.environ.get("CF_OUTPUT_DIR")
+        output_dir = cf_out or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
         os.makedirs(output_dir, exist_ok=True)
 
         cf_folder_map = {
@@ -116,8 +138,9 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
             11: "11_timevar_factual_no_vaccines"
         }
         cf_folder_name = cf_folder_map.get(cf_type, f"type_{cf_type}")
-        central_graph_dir = os.path.join("all_counterfactual_results", cf_folder_name, "graphs")
-        central_data_dir = os.path.join("all_counterfactual_results", cf_folder_name, "data")
+        central_root = os.path.join(cf_out, "all_counterfactual_results") if cf_out else "all_counterfactual_results"
+        central_graph_dir = os.path.join(central_root, cf_folder_name, "graphs")
+        central_data_dir = os.path.join(central_root, cf_folder_name, "data")
         os.makedirs(central_graph_dir, exist_ok=True)
         os.makedirs(central_data_dir, exist_ok=True)
 
@@ -135,7 +158,8 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
             plt.plot(county_cases_np, marker='x', label='Actual Cases')
             plt.xlabel('Days')
             plt.ylabel('Number of Cases')
-            plt.title(f'Factual vs Counterfactual Data (Type {cf_type}) for {population}')
+            plt.title(f'CF Type {cf_type} ({CF_POLICY_DESC.get(cf_type, "?")}) '
+                      f'— {population}\nFactual vs Counterfactual daily cases')
             plt.legend()
             plt.savefig(f'{output_dir}/counterfactual_results{cf_type}.png')
             plt.savefig(os.path.join(central_graph_dir, f"{population}_counterfactual_results{cf_type}.png"))
@@ -279,7 +303,12 @@ def eval_net(sim, runner):
 
     metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
     if generating_counterfactual:
-        cf_types_to_run = range(1, 12)
+        # CF_TYPES / CF_ITERS: optional overrides for smoke tests (default: all
+        # 11 types, 30 iterations).
+        _cf_types_env = os.environ.get("CF_TYPES", "").strip()
+        cf_types_to_run = ([int(x) for x in _cf_types_env.split(",") if x]
+                           if _cf_types_env else range(1, 12))
+        _cf_iters_override = int(os.environ["CF_ITERS"]) if os.environ.get("CF_ITERS") else None
         cf_folder_map = {
             1: "01_static_all_open",
             2: "02_static_school_closed_work_open",
@@ -296,7 +325,9 @@ def eval_net(sim, runner):
 
         param_load_phase = 0 if metro_phase == 0 else 2
         base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
-        param_file = os.path.join(base_dir, "calibrated_params.txt")
+        # CF_PARAM_FILE lets a CF run use a specific frozen calibration
+        # (e.g. a waning-mode fit) without staging it into result_graphs/...
+        param_file = os.environ.get("CF_PARAM_FILE") or os.path.join(base_dir, "calibrated_params.txt")
 
         if not os.path.exists(param_file):
             print(f"\n[ERROR] Calibrated parameter file not found at: '{param_file}'")
@@ -321,9 +352,20 @@ def eval_net(sim, runner):
             print(f"=======================================================", flush=True)
 
             all_age_proportions = []
-            num_iterations = 30
+            num_iterations = _cf_iters_override or 30
 
+            _cf_base_seed = int(sim.config['simulation_metadata'].get('random_seed', 42))
             for num in range(num_iterations):
+                # Common random numbers: iteration `num` uses the same RNG state
+                # for every CF type. The substeps key their stochastic draws on
+                # `_cf_iter` (+ step + call-site), and this resets the global
+                # stream as a backstop for anything not routed through a
+                # dedicated generator.
+                sim.config['simulation_metadata']['_cf_iter'] = num
+                torch.manual_seed((_cf_base_seed + num) % (2**31 - 1))
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed_all((_cf_base_seed + num) % (2**31 - 1))
+
                 runner.state = deep_clone_state(initial_state)
                 runner.state_trajectory = []
 
@@ -339,7 +381,8 @@ def eval_net(sim, runner):
                 _ = execute(sim, runner, case_numbers, epoch=0, epochs=1, n_steps=num_steps)
 
                 substep = runner.initializer.transition_function['0'].new_transmission
-                output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
+                output_dir = os.environ.get("CF_OUTPUT_DIR") or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
+                os.makedirs(output_dir, exist_ok=True)
                 path = f'{output_dir}/counterfactual_data{cf_type}_proportions.csv'
 
                 if num_iterations > 1:

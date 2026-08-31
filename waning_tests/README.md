@@ -50,11 +50,16 @@ Everything is driven from the repo root. Use the `.venv_ds` env
    into `waning_tests/_backup/`,
 2. for each configuration: patches only the waning keys
    (`set_waning_config.py`), runs `python3 main.py 01031`, copies the run's
-   `training_proportions.csv` to `waning_tests/data/<label>.csv`,
+   `training_proportions.csv` to `waning_tests/data/<FIPS>/<label>.csv` and the
+   aligned simulated-vs-actual daily cases (`generated_factual.csv`) to
+   `waning_tests/data/<FIPS>/<label>_cases.csv`,
 3. restores `config.yaml` and the original baseline file on exit.
 
+All per-county artifacts live under a `<FIPS>` subfolder: input trajectories in
+`waning_tests/data/<FIPS>/`, plots in `waning_tests/results/<FIPS>/`.
+
 The already-generated `none` result from seed 42 is reused as the **Test 1
-reference** (`waning_tests/data/none_baseline_reference.csv`); it is *not*
+reference** (`waning_tests/data/<FIPS>/none_baseline_reference.csv`); it is *not*
 re-run.
 
 ```bash
@@ -76,14 +81,20 @@ Then build the plots + PASS/FAIL summary:
 python3 waning_tests/plot_waning_tests.py
 ```
 
-Outputs:
+Outputs (under `waning_tests/results/<FIPS>/`):
 
 ```
-waning_tests/
+waning_tests/results/01031/
 ├── no_waning_same_seed_comparison.png     # Test 1
 ├── fixed_waning_60_80_100_days.png        # Test 2
-└── stochastic_waning_005_010_020.png      # Test 3
+├── stochastic_waning_010_020_040.png      # Test 3
+├── <label>_sim_vs_actual.png              # simulated vs reported daily cases, per run
+└── sim_vs_actual_all.png                  # the above on one grid
 ```
+
+The `sim_vs_actual` plots are the same view as
+`result_graphs/<FIPS>/.../<epoch>/simulation_results.png` (raw daily case
+counts, simulation vs. reported) but collected per run.
 
 ### Pass criteria
 
@@ -93,7 +104,7 @@ waning_tests/
 * **Test 2** – the three curves are distinct; shorter immunity (60d) gives a
   larger late-window infected fraction than 80d ≥ 100d.
 * **Test 3** – the three curves are distinct; higher `WANING_RATE` gives a
-  larger late-window infected fraction (0.005 ≤ 0.01 ≤ 0.02).
+  larger late-window infected fraction (0.010 ≤ 0.020 ≤ 0.040).
 
 ## Files
 
@@ -101,6 +112,7 @@ waning_tests/
 |------|---------|
 | `set_waning_config.py` | targeted in-place patch of the 3 waning keys in `config.yaml` (no YAML re-dump). |
 | `run_waning_tests.sh` | orchestrates the runs, backs up/restores originals, collects trajectories. |
-| `plot_waning_tests.py` | reads `data/*.csv`, writes the 3 PNGs, prints PASS/FAIL. |
-| `data/` | collected `training_proportions.csv` per run + the reused baseline. |
+| `plot_waning_tests.py` | reads `data/<FIPS>/*.csv`, writes the test PNGs + `sim_vs_actual` plots to `results/<FIPS>/`, prints PASS/FAIL. |
+| `data/<FIPS>/` | collected `training_proportions.csv` (`<label>.csv`) + `generated_factual.csv` (`<label>_cases.csv`) per run + the reused baseline. |
+| `results/<FIPS>/` | generated plots. |
 | `_backup/` | pristine `config.yaml` and baseline trajectory (restored automatically). |

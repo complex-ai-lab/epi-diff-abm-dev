@@ -1,0 +1,188 @@
+
+==========================================================
+ vaccinated test run: none   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=none R_to_S=None V_to_S=None R_rate=None V_rate=None
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/none.csv
+
+==========================================================
+ vaccinated test run: fixed_40   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=fixed R_to_S=40 V_to_S=60 R_rate=None V_rate=None
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/fixed_40.csv
+
+==========================================================
+ vaccinated test run: fixed_60   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=fixed R_to_S=60 V_to_S=90 R_rate=None V_rate=None
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/fixed_60.csv
+
+==========================================================
+ vaccinated test run: fixed_80   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=fixed R_to_S=80 V_to_S=120 R_rate=None V_rate=None
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/fixed_80.csv
+
+==========================================================
+ vaccinated test run: stochastic_0.005   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=stochastic R_to_S=None V_to_S=None R_rate=0.005 V_rate=0.003333
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/stochastic_0.005.csv
+
+==========================================================
+ vaccinated test run: stochastic_0.010   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=stochastic R_to_S=None V_to_S=None R_rate=0.01 V_rate=0.006667
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/stochastic_0.010.csv
+
+==========================================================
+ vaccinated test run: stochastic_0.020   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=stochastic R_to_S=None V_to_S=None R_rate=0.02 V_rate=0.013333
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/stochastic_0.020.csv
+
+==========================================================
+ vaccinated test run: stochastic_0.040   (FIPS 01031, SEED 42)
+==========================================================
+[set_vacc_config] mode=stochastic R_to_S=None V_to_S=None R_rate=0.04 V_rate=0.026667
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 01031 | Mode: Metro Calibration Phase 0 | seed: 1073 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_index', 'edge_attr'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = False
+[info] -> vaccinated_test/data/stochastic_0.040.csv
+
+[done] all requested runs finished. Now generate the plots:
+    /home/pkbiswas/.conda/envs/.venv_ds/bin/python vaccinated_test/plot_vacc_tests.py
+[info] restoring covid_abm/yamls/config.yaml and the metro_0 baseline result files

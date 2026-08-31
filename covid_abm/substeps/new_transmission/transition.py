@@ -22,6 +22,12 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.RECOVERED_VAR = self.config["simulation_metadata"]["RECOVERED_VAR"]
         self.INFECTED_VAR = self.config["simulation_metadata"]["INFECTED_VAR"]
         self.MORTALITY_VAR = self.config["simulation_metadata"]["MORTALITY_VAR"]
+        # Distinct disease stage for vaccine-derived protection (S -> VACCINATED
+        # -> S). Kept separate from RECOVERED_VAR so the two immunities can wane
+        # independently. SFInfector in config.yaml is sized to cover this id.
+        self.VACCINATED_VAR = self.config["simulation_metadata"].get(
+            "VACCINATED_VAR", 5
+        )
 
         self.num_timesteps = self.config["simulation_metadata"]["num_steps_per_episode"]
         self.num_weeks = self.config["simulation_metadata"]["NUM_WEEKS"]
@@ -45,6 +51,13 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.school_net = self._load_single_net(f"{self.networks_dir}/{self.config['simulation_metadata']['POPULATION']}/mobility_networks/SCHOOL_NETWORK.pkl")
         self.proportion_history = []
         self.age_proportion_history = []
+        # Parallel to proportion_history: [t, vaccinated_fraction]. Kept as a
+        # separate list so proportion_history stays 5-wide (t,S,E,I,R,D) and
+        # abm_nets.py, which reads it positionally, is untouched.
+        self.vaccinated_proportion_history = []
+        # Instrumentation for the waning validation (fixed/stochastic modes):
+        # [t, recovered_pool, recovered_waned, vaccinated_pool, vaccinated_waned].
+        self.waning_events_history = []
 
         self.STAGE_UPDATE_VAR = 1
         self.INFINITY_TIME = self.config["simulation_metadata"]["INFINITY_TIME"]
@@ -55,20 +68,31 @@ class NewTransmission(SubstepTransitionMessagePassing):
             "INFECTED_TO_RECOVERED_TIME"
         ]
 
-        # --- Configurable immunity waning (R -> S) ----------------------------
+        # --- Configurable immunity waning (R -> S and VACCINATED -> S) --------
         # Selected before the run via config.yaml; not learnable, not a
-        # counterfactual. Modes:
-        #   "none"       -> existing behaviour: S -> E -> I -> R (no return to S)
-        #   "fixed"      -> every recovered agent returns to S exactly
-        #                   RECOVERED_TO_SUSCEPTIBLE_TIME days after entering R
-        #   "stochastic" -> every recovered agent has a daily probability
-        #                   p = 1 - exp(-WANING_RATE) of returning to S
+        # counterfactual. Natural immunity (I -> R -> S) and vaccine immunity
+        # (S -> VACCINATED -> S) wane on independent durations/rates. Modes:
+        #   "none"       -> no waning: S->E->I->R and S->VACCINATED stay put
+        #   "fixed"      -> R -> S after RECOVERED_TO_SUSCEPTIBLE_TIME days,
+        #                   VACCINATED -> S after VACCINATED_TO_SUSCEPTIBLE_TIME
+        #   "stochastic" -> daily p = 1 - exp(-RECOVERED_WANING_RATE) for R,
+        #                   daily p = 1 - exp(-VACCINATED_WANING_RATE) for VACC
         sim_md = self.config["simulation_metadata"]
         self.IMMUNITY_WANING_MODE = sim_md.get("IMMUNITY_WANING_MODE", "none")
         self.RECOVERED_TO_SUSCEPTIBLE_TIME = sim_md.get(
             "RECOVERED_TO_SUSCEPTIBLE_TIME", 100
         )
-        self.WANING_RATE = sim_md.get("WANING_RATE", 0.01)
+        self.VACCINATED_TO_SUSCEPTIBLE_TIME = sim_md.get(
+            "VACCINATED_TO_SUSCEPTIBLE_TIME", 150
+        )
+        # RECOVERED_WANING_RATE supersedes the old WANING_RATE key; fall back to
+        # it so waning_tests/set_waning_config.py keeps working unchanged.
+        self.RECOVERED_WANING_RATE = sim_md.get(
+            "RECOVERED_WANING_RATE", sim_md.get("WANING_RATE", 0.01)
+        )
+        self.VACCINATED_WANING_RATE = sim_md.get("VACCINATED_WANING_RATE", 0.00667)
+        # kept for backward compatibility with any external reader
+        self.WANING_RATE = self.RECOVERED_WANING_RATE
         # Sentinel "no scheduled transition" time, safely past the end of a run
         # (INFINITY_TIME in the config is smaller than num_steps_per_episode, so
         # it cannot be reused here for the fixed-mode timer).
@@ -78,6 +102,35 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.st_bernoulli = StraightThroughBernoulli.apply
 
         self.calibration_mode = self.config['simulation_metadata']['calibration']
+
+        # --- Counterfactual common random numbers (CRN) ----------------------
+        # When GENERATING_COUNTERFACTUAL, every stochastic draw below is routed
+        # through a torch.Generator seeded by (random_seed, _cf_iter, step,
+        # call-site) -- NOT by COUNTERFACTUAL_TYPE. So for a given iteration two
+        # CF policies that coincide at a step consume identical randomness, and
+        # trajectory differences are attributable to the policy, not RNG drift.
+        # _cf_iter is set per iteration by abm_nets.eval_net.
+        self._crn_call_ids = {
+            "init_infect": 11, "isolation": 23, "interv_school": 31,
+            "interv_occ": 43, "vaccine": 57, "expose": 61, "waning": 79,
+        }
+
+    def _generating_cf(self):
+        return str(self.config["simulation_metadata"].get(
+            "GENERATING_COUNTERFACTUAL", False)).lower() in ("true", "1")
+
+    def _crn_gen(self, t, call_id, device=None):
+        """Deterministic torch.Generator for one CF stochastic call site,
+        seeded by (random_seed, _cf_iter, t, call_id) -- independent of
+        COUNTERFACTUAL_TYPE (common random numbers across CF policies)."""
+        md = self.config["simulation_metadata"]
+        base = int(md.get("random_seed", md.get("SEED", 42)))
+        it = int(md.get("_cf_iter", 0))
+        cid = self._crn_call_ids.get(call_id, 97)
+        s = (((base & 0xFFFFF) * 1_000_003 + it) * 1_000_003 + int(t)) * 131 + cid
+        g = torch.Generator(device=device or self.device)
+        g.manual_seed(int(s & 0x7FFF_FFFF_FFFF_FFFF))
+        return g
 
     def _lam(
         self,
@@ -135,6 +188,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
         stage_progression = (current_stages == self.SUSCEPTIBLE_VAR)*self.SUSCEPTIBLE_VAR \
             + (current_stages == self.RECOVERED_VAR)*self.RECOVERED_VAR + (current_stages == self.MORTALITY_VAR)*self.MORTALITY_VAR \
+            + (current_stages == self.VACCINATED_VAR)*self.VACCINATED_VAR \
             + (current_stages == self.EXPOSED_VAR)*transition_to_infected \
             + (current_stages == self.INFECTED_VAR)*transition_to_mortality_or_recovered
 
@@ -177,26 +231,60 @@ class NewTransmission(SubstepTransitionMessagePassing):
         ])
         proportions = counts.float() / total_people
 
+        # proportion_history stays 5-wide (t,S,E,I,R,D) for abm_nets.py. Once
+        # vaccination starts, S+E+I+R+D no longer sums to 1 - the remainder is
+        # the vaccinated fraction, tracked here in its own list.
         self.proportion_history.append([t] + proportions.detach().cpu().tolist())
+        vaccinated_fraction = (
+            (current_stages == self.VACCINATED_VAR).sum().float() / total_people
+        )
+        self.vaccinated_proportion_history.append(
+            [t, vaccinated_fraction.detach().cpu().item()]
+        )
+
+    def _merge_vaccinated_column(self, df):
+        """Left-join the vaccinated fraction onto a proportions dataframe."""
+        if self.vaccinated_proportion_history:
+            vdf = pd.DataFrame(
+                self.vaccinated_proportion_history, columns=["t", "vaccinated"]
+            )
+            df = df.merge(vdf, on="t", how="left")
+        return df
 
     def save_proportions_to_disk(self, output_path):
         if self.proportion_history:
-            df = pd.DataFrame(self.proportion_history, 
+            df = pd.DataFrame(self.proportion_history,
                             columns=["t", "susceptible", "exposed", "infected", "recovered", "dead"])
+            df = self._merge_vaccinated_column(df)
             df.to_csv(output_path, index=False)
+
+    def save_waning_events_to_disk(self, output_path):
+        """Per-step waning instrumentation (fixed/stochastic modes only)."""
+        if self.waning_events_history:
+            pd.DataFrame(
+                self.waning_events_history,
+                columns=["t", "recovered_pool", "recovered_waned",
+                         "vaccinated_pool", "vaccinated_waned"],
+            ).to_csv(output_path, index=False)
 
     def save_proportions_to_disk2(self, output_path, epoch_num):
         if self.proportion_history:
             cols = [
-                "t", 
-                f"susceptible_{epoch_num}", 
-                f"exposed_{epoch_num}", 
-                f"infected_{epoch_num}", 
-                f"recovered_{epoch_num}", 
+                "t",
+                f"susceptible_{epoch_num}",
+                f"exposed_{epoch_num}",
+                f"infected_{epoch_num}",
+                f"recovered_{epoch_num}",
                 f"dead_{epoch_num}"
             ]
 
             new_df = pd.DataFrame(self.proportion_history, columns=cols)
+            if self.vaccinated_proportion_history:
+                vdf = pd.DataFrame(
+                    self.vaccinated_proportion_history,
+                    columns=["t", f"vaccinated_{epoch_num}"],
+                )
+                new_df = new_df.merge(vdf, on="t", how="left")
 
             if os.path.exists(output_path):
                 existing_df = pd.read_csv(output_path)
@@ -224,7 +312,20 @@ class NewTransmission(SubstepTransitionMessagePassing):
         else:
             logits[:, 1] = torch.log(torch.tensor(val, device=device, dtype=torch.float))
 
-        samples = F.gumbel_softmax(logits, tau=tau, hard=hard)
+        if self._generating_cf():
+            # CRN gumbel-softmax so initial infections match across CF policies.
+            u = torch.rand(logits.shape, generator=self._crn_gen(0, "init_infect"),
+                           device=logits.device, dtype=logits.dtype)
+            gum = -torch.log(-torch.log(u + 1e-20) + 1e-20)
+            soft = F.softmax((logits + gum) / tau, dim=-1)
+            if hard:
+                oh = torch.zeros_like(soft).scatter_(
+                    -1, soft.argmax(dim=-1, keepdim=True), 1.0)
+                samples = (oh - soft).detach() + soft
+            else:
+                samples = soft
+        else:
+            samples = F.gumbel_softmax(logits, tau=tau, hard=hard)
         infected_mask = samples[:, 1]
 
         new_stages[:, 0] = 2.0 * infected_mask
@@ -321,28 +422,41 @@ class NewTransmission(SubstepTransitionMessagePassing):
             nets['rand'].append(self._load_single_net(f"{self.networks_dir}/{population}/mobility_networks/randnets/{t}.pkl"))
         return nets
 
-    def apply_intervention_fast(self, intervention, edges):
+    def apply_intervention_fast(self, intervention, edges, t=0, net_id="net"):
         if edges.size(0) == 0: return edges
 
+        # CRN in counterfactual mode: the closure fraction and the kept-edge
+        # subset for (iteration, step, this network) are identical across CF
+        # policies -- so two policies applying the *same* intervention value at
+        # step t get the *same* realised network.
+        cf = self._generating_cf()
+        g_cpu = self._crn_gen(t, f"interv_{net_id}", device="cpu") if cf else None
+        g_dev = self._crn_gen(t, f"interv_{net_id}") if cf else None
+
         if intervention == 0:
-            sample = torch.clamp(torch.normal(0.5, 0.15, (1,)), 0, 0.25).to(self.device)
+            sample = torch.clamp(torch.normal(0.5, 0.15, (1,), generator=g_cpu), 0, 0.25).to(self.device)
         else:
-            sample = torch.clamp(torch.normal(0.5, 0.15, (1,)), 0.75, 1).to(self.device)
+            sample = torch.clamp(torch.normal(0.5, 0.15, (1,), generator=g_cpu), 0.75, 1).to(self.device)
 
         keep_frac = (1.0 - sample).item()
         k = int(edges.size(0) * keep_frac)
 
-        idx = torch.randperm(edges.size(0), device=self.device)[:k]
+        idx = torch.randperm(edges.size(0), device=self.device, generator=g_dev)[:k]
         return edges[idx]
     
-    def apply_vaccines(self, current_stages, num_vaccines, tau=0.1):
+    def apply_vaccines(self, current_stages, num_vaccines, tau=0.1, t=0):
         device = current_stages.device
         N = current_stages.shape[0]
-        
+
         is_susceptible = self.soft_eq(current_stages, self.SUSCEPTIBLE_VAR, temperature=tau)
         logits = torch.log(is_susceptible + 1e-10).view(N, 1)
-        
-        gumbels = -torch.log(-torch.log(torch.rand_like(logits) + 1e-10) + 1e-10)
+
+        if self._generating_cf():
+            u = torch.rand(logits.shape, generator=self._crn_gen(t, "vaccine"),
+                           device=logits.device, dtype=logits.dtype)
+        else:
+            u = torch.rand_like(logits)
+        gumbels = -torch.log(-torch.log(u + 1e-10) + 1e-10)
         y = logits + gumbels
         
         num_vax_int = int(num_vaccines.item()) if torch.is_tensor(num_vaccines) else int(num_vaccines)
@@ -356,12 +470,15 @@ class NewTransmission(SubstepTransitionMessagePassing):
         hard_mask = torch.zeros(N, 1, device=device)
         hard_mask[indices] = 1.0
         
-        soft_probs = torch.sigmoid(logits) 
+        soft_probs = torch.sigmoid(logits)
         vax_mask = (hard_mask - soft_probs).detach() + soft_probs
-        
-        stage_delta = (self.RECOVERED_VAR - self.SUSCEPTIBLE_VAR) * vax_mask
+
+        # Vaccination now moves S -> VACCINATED (a distinct stage), not S -> R,
+        # so vaccine-derived immunity can wane on its own schedule. Selection,
+        # counts and the straight-through mask are unchanged.
+        stage_delta = (self.VACCINATED_VAR - self.SUSCEPTIBLE_VAR) * vax_mask
         updated_stages = current_stages + stage_delta
-        
+
         return updated_stages
 
     def get_age_stage_proportions(self, t, current_stages, agents_ages):
@@ -443,8 +560,8 @@ class NewTransmission(SubstepTransitionMessagePassing):
             if cf_type == 11:
                 num_vaccines = 0
 
-        school_net = self.apply_intervention_fast(school_intervention, self.school_net)
-        occ_net = self.apply_intervention_fast(occ_intervention, self.networks['occ'][t])
+        school_net = self.apply_intervention_fast(school_intervention, self.school_net, t, "school")
+        occ_net = self.apply_intervention_fast(occ_intervention, self.networks['occ'][t], t, "occ")
 
         combined_net = torch.cat([
                     school_net, 
@@ -472,6 +589,8 @@ class NewTransmission(SubstepTransitionMessagePassing):
         if (t == 0):
             self.proportion_history = []
             self.age_proportion_history = []
+            self.vaccinated_proportion_history = []
+            self.waning_events_history = []
 
         R = (R_tensor.T * week_one_hot).sum()
 
@@ -570,9 +689,15 @@ class NewTransmission(SubstepTransitionMessagePassing):
         prob_not_infected = torch.exp(-1 * new_transmission)
         probs = torch.hstack((1 - prob_not_infected, prob_not_infected))
 
-        potentially_exposed_today = self.st_bernoulli(probs)[:, 0].to(
-            self.device
-        )
+        if self._generating_cf():
+            # CRN exposure draw (fixed size N, no gradient needed in CF mode).
+            potentially_exposed_today = torch.bernoulli(
+                probs, generator=self._crn_gen(t, "expose")
+            )[:, 0].to(self.device)
+        else:
+            potentially_exposed_today = self.st_bernoulli(probs)[:, 0].to(
+                self.device
+            )
 
         newly_exposed_today = (
             current_stages == self.SUSCEPTIBLE_VAR
@@ -620,8 +745,22 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
         newly_exposed_today = newly_exposed_today.unsqueeze(1)
 
+        # Disease stages at the start of this timestep (S,E,I,R,D only), before
+        # vaccination moves any S -> VACCINATED. Used below so that (a) an agent
+        # cannot be both vaccinated and exposed this step and (b) an agent that
+        # became R/VACCINATED this step is not eligible to wane this step.
+        pre_vaccination_stages = current_stages
+
         if with_vacc:
-            current_stages = self.apply_vaccines(current_stages, num_vaccines)
+            current_stages = self.apply_vaccines(current_stages, num_vaccines, t=t)
+            # Vaccination takes precedence over a same-step exposure: only
+            # SUSCEPTIBLE agents can become EXPOSED, and these are no longer
+            # susceptible.
+            just_vaccinated = (
+                (pre_vaccination_stages == self.SUSCEPTIBLE_VAR)
+                & (current_stages == self.VACCINATED_VAR)
+            )
+            newly_exposed_today = newly_exposed_today * (~just_vaccinated).float()
 
         daily_deaths = self.update_number_of_dead(daily_deaths, current_stages, agents_next_stage_times, t, newly_exposed_today)
 
@@ -630,17 +769,19 @@ class NewTransmission(SubstepTransitionMessagePassing):
             t, agents_next_stage_times, newly_exposed_today, current_stages
         )
 
-        # --- Configurable immunity waning (R -> S) ---------------------------
-        # Runs after the normal S->E->I->R progression. It only ever moves
-        # agents that are in R *after* this timestep's progression back to S,
-        # so the existing S->E, E->I, I->R logic is untouched. Vaccinated
-        # agents are represented with RECOVERED_VAR (see apply_vaccines), so
-        # this waning applies to vaccine-derived immunity as well.
+        # --- Configurable immunity waning (R -> S and VACCINATED -> S) -------
+        # Runs after the normal S->E->I->R progression. It only moves agents
+        # that are in R or VACCINATED *after* this timestep's progression back
+        # to S, so the S->E, E->I, I->R logic is untouched. Natural immunity
+        # (RECOVERED) and vaccine immunity (VACCINATED) wane on independent
+        # durations/rates.
+        # instrumentation only (does not affect dynamics): per-step counts of
+        # the eligible R / VACCINATED pool and how many of each waned to S.
+        n_r_pool = n_r_waned = n_v_pool = n_v_waned = 0.0
         if self.IMMUNITY_WANING_MODE == "fixed":
-            # Schedule R -> S once, when an agent first enters R (covers both
-            # I -> R and vaccination S -> R). Do not touch the timer again on
-            # later timesteps.
-            newly_recovered = (current_stages != self.RECOVERED_VAR) & (
+            # Schedule each transition once, when the agent first enters the
+            # state. Do not touch the timer again on later timesteps.
+            newly_recovered = (pre_vaccination_stages != self.RECOVERED_VAR) & (
                 updated_stages == self.RECOVERED_VAR
             )
             updated_next_stage_times = torch.where(
@@ -650,11 +791,31 @@ class NewTransmission(SubstepTransitionMessagePassing):
                 ),
                 updated_next_stage_times,
             )
+            newly_vaccinated = (
+                pre_vaccination_stages != self.VACCINATED_VAR
+            ) & (updated_stages == self.VACCINATED_VAR)
+            updated_next_stage_times = torch.where(
+                newly_vaccinated,
+                torch.full_like(
+                    updated_next_stage_times,
+                    t + self.VACCINATED_TO_SUSCEPTIBLE_TIME,
+                ),
+                updated_next_stage_times,
+            )
             # Fire the scheduled transition once the timer is reached. A
-            # just-recovered agent has timer t + RECOVERED_TO_SUSCEPTIBLE_TIME
-            # (> t), so it is never waned in the same timestep it recovers.
-            waned = (updated_stages == self.RECOVERED_VAR) & (
-                updated_next_stage_times <= t
+            # just-recovered / just-vaccinated agent has timer > t, so it is
+            # never waned in the same timestep it enters the state.
+            waned = (
+                (updated_stages == self.RECOVERED_VAR)
+                | (updated_stages == self.VACCINATED_VAR)
+            ) & (updated_next_stage_times <= t)
+            n_r_pool = float((updated_stages == self.RECOVERED_VAR).sum())
+            n_v_pool = float((updated_stages == self.VACCINATED_VAR).sum())
+            n_r_waned = float(
+                (waned & (updated_stages == self.RECOVERED_VAR)).sum()
+            )
+            n_v_waned = float(
+                (waned & (updated_stages == self.VACCINATED_VAR)).sum()
             )
             updated_stages = torch.where(
                 waned,
@@ -669,19 +830,39 @@ class NewTransmission(SubstepTransitionMessagePassing):
                 updated_next_stage_times,
             )
         elif self.IMMUNITY_WANING_MODE == "stochastic":
-            # Only agents that were already in R at the *start* of this
-            # timestep are eligible, so an agent that transitioned I -> R (or
-            # S -> R via vaccination) this timestep cannot immediately wane.
-            already_recovered = (current_stages == self.RECOVERED_VAR) & (
-                updated_stages == self.RECOVERED_VAR
-            )
-            waning_probability = 1.0 - math.exp(-self.WANING_RATE)
-            waning_draw = torch.rand_like(updated_stages.float())
-            waning_mask = already_recovered & (waning_draw < waning_probability)
+            # Only agents already in the protected state at the *start* of this
+            # timestep are eligible, so an agent that transitioned I -> R this
+            # step, or S -> VACCINATED this step, cannot immediately wane.
+            already_recovered = (
+                pre_vaccination_stages == self.RECOVERED_VAR
+            ) & (updated_stages == self.RECOVERED_VAR)
+            already_vaccinated = (
+                pre_vaccination_stages == self.VACCINATED_VAR
+            ) & (updated_stages == self.VACCINATED_VAR)
+            recovered_probability = 1.0 - math.exp(-self.RECOVERED_WANING_RATE)
+            vaccinated_probability = 1.0 - math.exp(-self.VACCINATED_WANING_RATE)
+            if self._generating_cf():
+                _uf = updated_stages.float()
+                waning_draw = torch.rand(_uf.shape, generator=self._crn_gen(t, "waning"),
+                                         device=_uf.device, dtype=_uf.dtype)
+            else:
+                waning_draw = torch.rand_like(updated_stages.float())
+            r_waned_mask = already_recovered & (waning_draw < recovered_probability)
+            v_waned_mask = already_vaccinated & (waning_draw < vaccinated_probability)
+            waning_mask = r_waned_mask | v_waned_mask
+            n_r_pool = float(already_recovered.sum())
+            n_v_pool = float(already_vaccinated.sum())
+            n_r_waned = float(r_waned_mask.sum())
+            n_v_waned = float(v_waned_mask.sum())
             updated_stages = torch.where(
                 waning_mask,
                 torch.full_like(updated_stages, self.SUSCEPTIBLE_VAR),
                 updated_stages,
+            )
+
+        if self.IMMUNITY_WANING_MODE in ("fixed", "stochastic"):
+            self.waning_events_history.append(
+                [t, n_r_pool, n_r_waned, n_v_pool, n_v_waned]
             )
 
         updated_infected_times = self.update_infected_times(

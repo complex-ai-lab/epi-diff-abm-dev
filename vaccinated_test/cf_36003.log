@@ -1,0 +1,457 @@
+[set_vacc_config] mode=fixed R_to_S=60 V_to_S=90 R_rate=None V_rate=None
+==========================================================
+ CF set: fixed_60   FIPS 36003   SEED 42
+   params : /home/pkbiswas/COVID-ABM/epi-diff-abm-dev/vaccinated_test/data/36003/fixed_60_params.txt
+   output : /home/pkbiswas/COVID-ABM/epi-diff-abm-dev/vaccinated_test/results/36003/counterfactuals/fixed_60
+   types  : 1..11   iters: 30
+==========================================================
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/dataloader.py:102: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /__w/pytorch/pytorch/torch/csrc/utils/tensor_numpy.cpp:213.)
+  setattr(self, key, torch.from_numpy(df.values).float())
+Registry:  Registry()
+
+=======================================================
+Running FIPS 36003 | Mode: Counterfactual Generation | seed: 36045 (base 42, deterministic=True)
+=======================================================
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/data/data.py:228: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  offset = offset + store.num_nodes
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:160: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  assert node_store.num_nodes is not None
+/home/pkbiswas/.conda/envs/.venv_ds/lib/python3.11/site-packages/torch_geometric/utils/convert.py:161: UserWarning: Unable to accurately infer 'num_nodes' from the attribute set '{'edge_attr', 'edge_index'}'. Please explicitly set 'num_nodes' as an attribute of 'data' to suppress this warning
+  for i in range(node_store.num_nodes):
+/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/agent_torch/core/substep.py:107: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.detach().clone() or sourceTensor.detach().clone().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  setattr(self, tensor_name, torch.tensor(value, requires_grad=True))
+Registry:  Registry()
+[INFO] Mode: GENERATING_COUNTERFACTUAL = True
+
+=======================================================
+Running Counterfactual Type 1 (01_static_all_open) for FIPS 36003
+=======================================================
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+Counterfactual Type: 1
+
+=======================================================
+Running Counterfactual Type 2 (02_static_school_closed_work_open) for FIPS 36003
+=======================================================
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+Counterfactual Type: 2
+
+=======================================================
+Running Counterfactual Type 3 (03_static_school_open_work_closed) for FIPS 36003
+=======================================================
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+Counterfactual Type: 3
+
+=======================================================
+Running Counterfactual Type 4 (04_static_all_closed) for FIPS 36003
+=======================================================
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+Counterfactual Type: 4
+
+=======================================================
+Running Counterfactual Type 5 (05_static_school_open_work_factual) for FIPS 36003
+=======================================================
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+Counterfactual Type: 5
+
+=======================================================
+Running Counterfactual Type 6 (06_static_school_open_work_flipped) for FIPS 36003
+=======================================================
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+Counterfactual Type: 6
+
+=======================================================
+Running Counterfactual Type 7 (07_timevar_factual_school_factual_work) for FIPS 36003
+=======================================================
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+Counterfactual Type: 7
+
+=======================================================
+Running Counterfactual Type 8 (08_timevar_flipped_school_factual_work) for FIPS 36003
+=======================================================
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+Counterfactual Type: 8
+
+=======================================================
+Running Counterfactual Type 9 (09_timevar_factual_school_flipped_work) for FIPS 36003
+=======================================================
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+Counterfactual Type: 9
+
+=======================================================
+Running Counterfactual Type 10 (10_timevar_flipped_school_flipped_work) for FIPS 36003
+=======================================================
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+Counterfactual Type: 10
+
+=======================================================
+Running Counterfactual Type 11 (11_timevar_factual_no_vaccines) for FIPS 36003
+=======================================================
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+Counterfactual Type: 11
+
+[done] CF artifacts in: /home/pkbiswas/COVID-ABM/epi-diff-abm-dev/vaccinated_test/results/36003/counterfactuals/fixed_60
+   all_counterfactual_results
+   cf_raw_10.csv
+   cf_raw_11.csv
+   cf_raw_1.csv
+   cf_raw_2.csv
+   cf_raw_3.csv
+   cf_raw_4.csv
+   cf_raw_5.csv
+   cf_raw_6.csv
+   cf_raw_7.csv
+   cf_raw_8.csv
+   cf_raw_9.csv
+   counterfactual_data10_age_proportions.csv
+   counterfactual_data10.csv
+   counterfactual_data10_proportions.csv
+   counterfactual_data11_age_proportions.csv
+   counterfactual_data11.csv
+   counterfactual_data11_proportions.csv
+   counterfactual_data1_age_proportions.csv
+   counterfactual_data1.csv
+   counterfactual_data1_proportions.csv
+   counterfactual_data2_age_proportions.csv
+   counterfactual_data2.csv
+   counterfactual_data2_proportions.csv
+   counterfactual_data3_age_proportions.csv
+   counterfactual_data3.csv
+   counterfactual_data3_proportions.csv
+   counterfactual_data4_age_proportions.csv
+   counterfactual_data4.csv
+   counterfactual_data4_proportions.csv
+   counterfactual_data5_age_proportions.csv
+   counterfactual_data5.csv
+   counterfactual_data5_proportions.csv
+   counterfactual_data6_age_proportions.csv
+   counterfactual_data6.csv
+   counterfactual_data6_proportions.csv
+   counterfactual_data7_age_proportions.csv
+   counterfactual_data7.csv
+   counterfactual_data7_proportions.csv
+   counterfactual_data8_age_proportions.csv
+   counterfactual_data8.csv
+   counterfactual_data8_proportions.csv
+   counterfactual_data9_age_proportions.csv
+   counterfactual_data9.csv
+   counterfactual_data9_proportions.csv
+   counterfactual_results10.png
+   counterfactual_results11.png
+   counterfactual_results1.png
+   counterfactual_results2.png
+   counterfactual_results3.png
+   counterfactual_results4.png
+   counterfactual_results5.png
+   counterfactual_results6.png
+   counterfactual_results7.png
+   counterfactual_results8.png
+   counterfactual_results9.png
+[info] restoring covid_abm/yamls/config.yaml
