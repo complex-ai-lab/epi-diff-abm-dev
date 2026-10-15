@@ -112,12 +112,20 @@ bash calibrate.sh                            # new calibration in ..._4_5_..._me
 RUN_NAME=ei_4 bash run.sh                    # uses that calibration
 ```
 
-To keep the old fit and only change the durations, point `run.sh` at the old calibration:
+To keep the old fit and only change the durations:
 
-```bash
-CALIBRATION=result_graphs/01031/202010-202104/0.0005_3_5_True_True_False_metro_0/calibrated_params.txt \
-RUN_NAME=ei_4_oldfit bash run.sh
-```
+1. Set the new duration in `config.yaml`. Durations are only ever read from there:
+   ```yaml
+     EXPOSED_TO_INFECTED_TIME: 4      # was 3
+   ```
+2. Point `run.sh` at the calibration fitted with the old durations (E→I 3, I→R 5). `CALIBRATION` only chooses
+   which beta, initial infected fraction and k to load; it does not set any duration.
+   ```bash
+   CALIBRATION=result_graphs/01031/202010-202104/0.0005_3_5_True_True_False_metro_0/calibrated_params.txt \
+   RUN_NAME=ei_4_oldfit bash run.sh
+   ```
+
+Check `results/01031/ei_4_oldfit/config_used.yaml` to confirm which durations the run used.
 
 **Run without any calibration.** Set all three of `BETA`, `INITIAL_INFECTED` and `K`, then run
 `RUN_NAME=my_params bash run.sh`.
