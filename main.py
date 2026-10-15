@@ -19,6 +19,29 @@ CONFIG_PATH = os.path.abspath(os.environ.get("ABM_CONFIG") or os.path.join(
 os.environ["ABM_CONFIG"] = CONFIG_PATH
 
 
+def beta_daily_spec(beta_daily):
+    """BETA_DAILY from config.yaml -> {"start_day", "values"} for transition.py.
+      list              one beta per day starting on the first observed day (2020-10-26)
+      path to a .csv    column `beta`; if it also has a `day` column (simulation step, as in
+                        run.sh's beta_daily.csv) rows are placed by day, burn-in included
+    Relative paths are relative to the repo root."""
+    if beta_daily is None:
+        return None
+    burn_in = int(yaml.safe_load(open(CONFIG_PATH))["simulation_metadata"].get("BURN_IN_DAYS", 0) or 0)
+    if isinstance(beta_daily, str):
+        import pandas as pd
+        path = beta_daily if os.path.isabs(beta_daily) else os.path.join(os.path.dirname(os.path.abspath(__file__)), beta_daily)
+        df = pd.read_csv(path)
+        if "day" in df.columns:
+            df = df.sort_values("day")
+            days = df["day"].astype(int).tolist()
+            if days != list(range(days[0], days[0] + len(days))):
+                raise ValueError(f"BETA_DAILY csv {path}: `day` must be consecutive")
+            return {"start_day": days[0], "values": df["beta"].astype(float).tolist()}
+        return {"start_day": burn_in, "values": df["beta"].astype(float).tolist()}
+    return {"start_day": burn_in, "values": [float(v) for v in beta_daily]}
+
+
 def export_run_settings(config_path=CONFIG_PATH):
     """Export config.yaml's `run_settings` and the beta keys of `epidemic` as the
     environment variables abm_nets.py / transition.py read. Variables already set
@@ -36,6 +59,8 @@ def export_run_settings(config_path=CONFIG_PATH):
         "BETA_OVERRIDE": json.dumps(epi.get("BETA")),
         "I0_OVERRIDE": json.dumps(epi.get("INITIAL_INFECTED")),
         "K_OVERRIDE": json.dumps(epi.get("K")),
+        "BETA_DAILY_OVERRIDE": json.dumps(beta_daily_spec(epi.get("BETA_DAILY"))),
+        "HORIZON_DAYS": epi.get("HORIZON_DAYS") or "",
     })
     for key, value in env.items():
         os.environ.setdefault(key, str(value))
@@ -115,6 +140,19 @@ def run_county_phase(fips_code, phase, base_seed=DEFAULT_BASE_SEED, deterministi
         sys.exit(1)
 
     sim = Executor(covid_abm, pop_loader=LoadPopulation(pop_module))
+
+    # HORIZON_DAYS (config.yaml, runs only): number of days simulated after the burn-in
+    horizon = os.environ.get("HORIZON_DAYS", "").strip()
+    if horizon and os.environ.get("GENERATING_COUNTERFACTUAL", "").lower() in ("true", "1"):
+        md = sim.config['simulation_metadata']
+        burn_in = int(md.get('BURN_IN_DAYS', 0) or 0)
+        max_days = md['num_steps_per_episode'] - burn_in
+        if not 1 <= int(horizon) <= max_days:
+            print(f"Error: HORIZON_DAYS={horizon} must be between 1 and {max_days} "
+                  f"(interventions and networks exist for {max_days} days).")
+            sys.exit(1)
+        sim.data_loader.set_config_attribute('num_steps_per_episode', burn_in + int(horizon))
+        sim.config = sim.data_loader.get_config()
 
     # Configure simulation metadata in-memory for this FIPS and phase
     if "GENERATING_COUNTERFACTUAL" in os.environ:

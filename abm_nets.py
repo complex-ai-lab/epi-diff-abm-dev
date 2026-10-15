@@ -87,35 +87,28 @@ CF_FOLDER_MAP = {
 }
 
 
-def write_factual_run_csvs(sim, output_dir, param_tensor, case_numbers):
+def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, beta_history):
     """After the factual run (CF 7), write three summary CSVs to output_dir:
-      beta_daily.csv              day, date, phase, week, beta
+      beta_daily.csv              day, date, phase, beta   (the beta the simulator used each day)
       seirv_daily.csv             day, date, S, E, I, R, V   (mean agent counts over CF iterations)
       cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
-    `day` is the simulation step t (burn-in included); `date` comes from intervention.csv."""
+    `day` is the simulation step t (burn-in included); `date` comes from intervention.csv.
+    full_cases: one array per iteration of daily reported cases over all simulated days."""
     md = sim.config['simulation_metadata']
     num_steps = md['num_steps_per_episode']
-    num_weeks = md['NUM_WEEKS']
     num_agents = md['num_agents']
     burn_in = int(md.get('BURN_IN_DAYS', 0) or 0)
     report_lag = int(os.environ.get("REPORT_LAG", "0") or 0)
-    _bir = os.environ.get("BURN_IN_R", "")
-    burn_in_r = float(_bir) if _bir not in ("", "None", "none") else None
 
     dates = pd.read_csv(f"{md['population_dir']}/intervention.csv").set_index('t')['date']
     days = np.arange(num_steps)
+    phase = np.where(days < burn_in, 'burn_in', 'observed')
 
-    # 1) beta per day: weekly value from calibrated_params.txt; burn-in days use BURN_IN_R
-    R_weekly = param_tensor[:num_weeks].detach().cpu().numpy().ravel()
-    week = np.clip((days - burn_in) // 7, 0, num_weeks - 1)
-    beta = R_weekly[week]
-    if burn_in_r is not None:
-        beta = np.where(days < burn_in, burn_in_r, beta)
-    pd.DataFrame({
-        'day': days, 'date': dates.reindex(days).values,
-        'phase': np.where(days < burn_in, 'burn_in', 'observed'),
-        'week': np.where(days < burn_in, -1, week), 'beta': beta,
-    }).to_csv(os.path.join(output_dir, 'beta_daily.csv'), index=False)
+    # 1) beta per day, as recorded by the simulator (weekly / burn-in / BETA / BETA_DAILY)
+    beta = pd.DataFrame(beta_history, columns=['day', 'beta']).drop_duplicates('day').set_index('day')['beta']
+    pd.DataFrame({'day': days, 'date': dates.reindex(days).values, 'phase': phase,
+                  'beta': beta.reindex(days).values}).to_csv(
+        os.path.join(output_dir, 'beta_daily.csv'), index=False)
 
     # 2) S, E, I, R, V counts per day (mean over iterations of the stage fractions x N)
     props = pd.read_csv(os.path.join(output_dir, 'counterfactual_data7_proportions.csv'))
@@ -127,19 +120,20 @@ def write_factual_run_csvs(sim, output_dir, param_tensor, case_numbers):
         seirv[col] = props[cols].mean(axis=1) * num_agents
     seirv.to_csv(os.path.join(output_dir, 'seirv_daily.csv'), index=False)
 
-    # 3) simulated vs observed reported cases on the scored window
-    # (cf_raw_7.csv: one row per iteration, simulation days burn_in .. burn_in + n_eval - 1)
-    raw = np.loadtxt(os.path.join(output_dir, 'cf_raw_7.csv'), delimiter=',', ndmin=2)
-    n_eval = raw.shape[1]
-    sim_days = burn_in + np.arange(n_eval)
-    observed = case_numbers.detach().cpu().numpy()[report_lag:report_lag + n_eval]
+    # 3) simulated vs observed reported cases, every simulated day after the burn-in.
+    # Observed day d <-> simulation day burn_in + d (+ REPORT_LAG); blank where there is no data.
+    sims = np.stack(full_cases)[:, burn_in:]
+    sim_days = np.arange(burn_in, num_steps)
+    obs_all = case_numbers.detach().cpu().numpy()
+    obs_idx = sim_days - burn_in + report_lag
+    observed = np.where(obs_idx < len(obs_all), obs_all[np.minimum(obs_idx, len(obs_all) - 1)], np.nan)
     pd.DataFrame({
         'day': sim_days, 'date': dates.reindex(sim_days).values,
-        'simulated_cases': raw.mean(axis=0), 'simulated_cases_sd': raw.std(axis=0),
+        'simulated_cases': sims.mean(axis=0), 'simulated_cases_sd': sims.std(axis=0),
         'observed_cases': observed,
     }).to_csv(os.path.join(output_dir, 'cases_sim_vs_observed.csv'), index=False)
     print(f"[INFO] wrote beta_daily.csv, seirv_daily.csv, cases_sim_vs_observed.csv "
-          f"({raw.shape[0]} iterations) to {output_dir}", flush=True)
+          f"({len(full_cases)} iterations, {num_steps - burn_in} days after burn-in) to {output_dir}", flush=True)
 
 
 class LearnableParams(nn.Module):
@@ -732,11 +726,13 @@ def eval_net(sim, runner):
             except Exception as e:
                 print(f"\n[ERROR] Failed to load calibrated parameters from '{param_file}': {e}\n")
                 sys.exit(1)
-        elif len(overrides) == 3:
-            param_array = np.zeros(num_weeks + 2)
+        elif ("I0_OVERRIDE" in overrides and "K_OVERRIDE" in overrides and
+              ("BETA_OVERRIDE" in overrides or
+               os.environ.get("BETA_DAILY_OVERRIDE", "").strip() not in ("", "null", "None"))):
+            param_array = np.zeros(num_weeks + 2)  # weekly beta unused: BETA_DAILY replaces it
         else:
             print(f"\n[ERROR] Calibrated parameter file not found at: '{param_file}'")
-            print(f"[ERROR] Run calibrate.sh first, or set all of BETA, INITIAL_INFECTED and K in config.yaml.\n")
+            print(f"[ERROR] Run calibrate.sh first, or set BETA (or BETA_DAILY), INITIAL_INFECTED and K in config.yaml.\n")
             sys.exit(1)
 
         param_array = np.asarray(param_array, dtype=float).ravel()
@@ -772,6 +768,7 @@ def eval_net(sim, runner):
             print(f"=======================================================", flush=True)
 
             all_age_proportions = []
+            all_full_cases = []
             all_age_incidence = []
             all_essential_incidence = []
             all_layer_attribution = []
@@ -803,6 +800,7 @@ def eval_net(sim, runner):
                 tensorfunc_k(runner, True, param_tensor[-1], mode_calibrate=True)
 
                 _ = execute(sim, runner, case_numbers, epoch=0, epochs=1, n_steps=num_steps)
+                all_full_cases.append(runner.state_trajectory[-1][-1]['environment']['daily_infected'].detach().cpu().numpy())
 
                 substep = runner.initializer.transition_function['0'].new_transmission
                 output_dir = os.environ.get("CF_OUTPUT_DIR") or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
@@ -881,7 +879,7 @@ def eval_net(sim, runner):
                 einc_df.to_csv(f'{output_dir}/counterfactual_data{cf_type}_essential_incidence.csv', index=False)
 
             if cf_type == 7:
-                write_factual_run_csvs(sim, output_dir, param_tensor, case_numbers)
+                write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.beta_history)
 
         return
 

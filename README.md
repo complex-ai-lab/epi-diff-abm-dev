@@ -26,8 +26,10 @@ epidemic:
   EXPOSED_TO_INFECTED_TIME: 3        # E -> I, days
   INFECTED_TO_RECOVERED_TIME: 5      # I -> R, days
 
+  HORIZON_DAYS: 182                  # run.sh: days simulated after the 14-day burn-in (1..182)
   BETA: null                         # transmission rate used by run.sh: null = calibrated weekly beta,
                                      #   a number = that beta every week, a list of 26 = one per week
+  BETA_DAILY: null                   # daily beta (replaces BETA): a list from 2020-10-26, or a CSV
   INITIAL_INFECTED: null             # fraction infected at day 0; null = calibrated
   K: null                            # reporting fraction (cases = k x new infections); null = calibrated
 
@@ -80,9 +82,9 @@ Output in `results/01031/<RUN_NAME>/` (default `RUN_NAME=run`):
 
 | file | contents |
 |---|---|
-| `beta_daily.csv` | `day, date, phase, week, beta` — beta on every simulated day |
+| `beta_daily.csv` | `day, date, phase, beta` — the beta the simulator used on every simulated day |
 | `seirv_daily.csv` | `day, date, S, E, I, R, V` — agent counts per day, mean over the iterations |
-| `cases_sim_vs_observed.csv` | `day, date, simulated_cases, simulated_cases_sd, observed_cases` — the 168 scored days |
+| `cases_sim_vs_observed.csv` | `day, date, simulated_cases, simulated_cases_sd, observed_cases` — every day after the burn-in (`observed_cases` is blank after 2021-04-11, where the case data ends) |
 | `config_used.yaml` | copy of the config the run used |
 | `cf_raw_7.csv`, `counterfactual_data7*.csv`, `counterfactual_results7.png` | raw per-iteration output |
 
@@ -93,6 +95,11 @@ Output in `results/01031/<RUN_NAME>/` (default `RUN_NAME=run`):
 
 Edit `config.yaml`, then run again. Use `RUN_NAME` so earlier results are not overwritten.
 
+**Choose the horizon.** `HORIZON_DAYS: 60` simulates 2020-10-26 to 2020-12-24, after the 14-day burn-in. The
+maximum is 182, because interventions, vaccines and networks exist for 182 days. Because the randomness is
+fixed per day, a 60-day run is identical to the first 60 days of the full run. The horizon applies to
+`run.sh` only; calibration always uses the full window.
+
 **Change beta** (keep the calibrated initial infected fraction and k):
 
 ```yaml
@@ -101,6 +108,26 @@ Edit `config.yaml`, then run again. Use `RUN_NAME` so earlier results are not ov
 ```bash
 RUN_NAME=beta_1.2 bash run.sh
 ```
+
+**Daily beta.** `BETA_DAILY` replaces `BETA` and takes one value per day.
+- A list in the config starts on 2020-10-26 and needs at least `HORIZON_DAYS` values; the burn-in keeps
+  `BETA_BURN_IN`:
+  ```yaml
+    BETA_DAILY: [1.30, 1.28, 1.25, 1.21, ...]
+  ```
+- A CSV with a `beta` column is read the same way. If the CSV also has a `day` column, rows are placed by
+  simulation day, burn-in included. The easiest way to make one is to edit the `beta` column of a previous
+  run's `beta_daily.csv`:
+  ```bash
+  cp results/01031/run/beta_daily.csv my_beta.csv     # edit the beta column
+  ```
+  ```yaml
+    BETA_DAILY: my_beta.csv                          # relative to the repo root
+  ```
+  ```bash
+  RUN_NAME=my_beta bash run.sh
+  ```
+  Feeding an unedited `beta_daily.csv` back in reproduces that run exactly.
 
 **Change E→I or I→R.** The calibrated beta was fitted with the old durations, so normally you recalibrate:
 
@@ -127,7 +154,7 @@ To keep the old fit and only change the durations:
 
 Check `results/01031/ei_4_oldfit/config_used.yaml` to confirm which durations the run used.
 
-**Run without any calibration.** Set all three of `BETA`, `INITIAL_INFECTED` and `K`, then run
+**Run without any calibration.** Set `BETA` (or `BETA_DAILY`), `INITIAL_INFECTED` and `K`, then run
 `RUN_NAME=my_params bash run.sh`.
 
 **Run counterfactuals.** For example, `CF_TYPES=1,7,11 RUN_NAME=cf bash run.sh` runs all-open, factual, and

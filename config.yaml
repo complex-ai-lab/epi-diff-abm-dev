@@ -12,14 +12,24 @@ epidemic:
   EXPOSED_TO_INFECTED_TIME: 3        # E -> I, days
   INFECTED_TO_RECOVERED_TIME: 5      # I -> R, days
 
-  # --- Transmission rate beta used by run.sh ---------------------------------
-  #   null           -> the calibrated weekly beta (calibrated_params.txt)
-  #   a number       -> that beta in every week, e.g. BETA: 1.2
-  #   a list of 26   -> one beta per week (week 0 starts 2020-10-26)
+  # --- run.sh only ------------------------------------------------------------
+  HORIZON_DAYS: 182                  # days simulated after the 14-day burn-in, starting 2020-10-26 (1..182)
+
+  # Transmission rate beta:
+  #   BETA: null           -> the calibrated weekly beta (calibrated_params.txt)
+  #   BETA: 1.2            -> that beta in every week
+  #   BETA: [1.1, 0.9, ...] (26 values) -> one beta per week (week 0 starts 2020-10-26)
   BETA: null
+  # Daily beta; replaces BETA when set:
+  #   BETA_DAILY: [1.1, 1.08, ...]  -> one value per day from 2020-10-26, at least HORIZON_DAYS values
+  #                                    (the burn-in keeps BETA_BURN_IN)
+  #   BETA_DAILY: my_beta.csv       -> CSV with a `beta` column, read the same way; if it also has a
+  #                                    `day` column (simulation step, burn-in included, e.g. an edited
+  #                                    results/01031/run/beta_daily.csv) rows are placed by day
+  BETA_DAILY: null
   INITIAL_INFECTED: null             # fraction infected at day 0; null -> calibrated
   K: null                            # reporting fraction (cases = k x new infections); null -> calibrated
-  # With BETA, INITIAL_INFECTED and K all set, run.sh needs no calibration.
+  # With BETA (or BETA_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
 
   # --- Beta during calibration (calibrate.sh) ---------------------------------
   # Calibrated as a cubic spline in log beta, one value per week.

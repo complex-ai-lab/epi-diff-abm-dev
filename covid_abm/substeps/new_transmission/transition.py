@@ -7,6 +7,7 @@ import glob
 import pandas as pd
 import numpy as np
 import os
+import json
 
 from agent_torch.core.substep import SubstepTransitionMessagePassing
 from agent_torch.core.helpers import get_by_path
@@ -163,6 +164,20 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.burn_in_r = float(_bir) if _bir not in ("", "None", "none") else None
         if self.burn_in_r is not None and self.burn_in_r <= 0:
             raise ValueError(f"BURN_IN_R must be > 0, got {self.burn_in_r}")
+        # BETA_DAILY_OVERRIDE (run.sh only; built by main.py from BETA_DAILY in
+        # config.yaml): JSON {"start_day": s, "values": [...]}. In a run
+        # (GENERATING_COUNTERFACTUAL), simulation day t uses values[t - s] for
+        # s <= t < s + len(values), replacing the weekly / burn-in beta.
+        _bd = os.environ.get("BETA_DAILY_OVERRIDE", "").strip()
+        self.beta_daily = None
+        if _bd not in ("", "null", "None"):
+            _spec = json.loads(_bd)
+            self.beta_daily = (int(_spec["start_day"]),
+                               [float(v) for v in _spec["values"]])
+            if any(v < 0 for v in self.beta_daily[1]):
+                raise ValueError("BETA_DAILY values must be >= 0")
+        # [t, beta used on day t], recorded in runs only (beta_daily.csv)
+        self.beta_history = []
 
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         self.data_dir = os.path.join(project_root, 'data')
@@ -1533,6 +1548,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
             self.age_incidence_history = []
             self.essential_incidence_history = []
             self.layer_attribution_history = []
+            self.beta_history = []
 
         R = (R_tensor.T * week_one_hot).sum()
 
@@ -1543,6 +1559,18 @@ class NewTransmission(SubstepTransitionMessagePassing):
         # remains calibrated.
         if self.burn_in_r is not None and t < self.burn_in_days:
             R = torch.as_tensor(self.burn_in_r, dtype=R.dtype, device=R.device)
+
+        if generating_counterfactual:
+            if self.beta_daily is not None:
+                _start, _vals = self.beta_daily
+                if t == 0 and (_start > self.burn_in_days or _start + len(_vals) < self.num_timesteps):
+                    raise ValueError(
+                        f"BETA_DAILY covers simulation days {_start}..{_start + len(_vals) - 1}, but the run needs "
+                        f"days {self.burn_in_days}..{self.num_timesteps - 1} (a list starts on the first observed "
+                        f"day; give at least HORIZON_DAYS values)")
+                if _start <= t < _start + len(_vals):
+                    R = torch.as_tensor(_vals[t - _start], dtype=R.dtype, device=R.device)
+            self.beta_history.append([t, float(R.detach())])
 
         current_stages = state['agents']['citizens']['disease_stage']
         agents_ages = get_by_path(state, re.split("/", input_variables["age"]))

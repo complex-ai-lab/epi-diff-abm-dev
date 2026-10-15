@@ -1,8 +1,9 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
 # Run the ABM (default: factual run = CF 7, 30 stochastic iterations, county 01031).
-# Settings come from config.yaml. Beta / initial infected / k are the calibrated
-# values unless BETA / INITIAL_INFECTED / K are set in config.yaml.
+# Settings come from config.yaml: HORIZON_DAYS sets the number of simulated days;
+# beta / initial infected / k are the calibrated values unless BETA (or BETA_DAILY) /
+# INITIAL_INFECTED / K are set there.
 #
 #   bash run.sh                           # -> results/01031/run/
 #   RUN_NAME=beta_1.2 bash run.sh         # -> results/01031/beta_1.2/  (keep runs side by side)
@@ -11,7 +12,7 @@
 #   OVERWRITE=1 bash run.sh               # replace an existing output folder
 #
 # Output (results/<FIPS>/<RUN_NAME>/):
-#   beta_daily.csv              day, date, phase, week, beta
+#   beta_daily.csv              day, date, phase, beta
 #   seirv_daily.csv             day, date, S, E, I, R, V  (mean over iterations)
 #   cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
 #   cf_raw_7.csv, counterfactual_data7*.csv, counterfactual_results7.png
@@ -32,7 +33,7 @@ print(f"{md['DATE']}/{md['INITIAL_INFECTION_RATE']}_{epi['EXPOSED_TO_INFECTED_TI
 PY
 )"
 PARAMS="${CALIBRATION:-$CAL_DIR/calibrated_params.txt}"
-[[ -f "$PARAMS" ]] || echo "[run] no calibration at $PARAMS -- only OK if BETA, INITIAL_INFECTED and K are all set in config.yaml" \
+[[ -f "$PARAMS" ]] || echo "[run] no calibration at $PARAMS -- only OK if BETA (or BETA_DAILY), INITIAL_INFECTED and K are all set in config.yaml" \
                          "(otherwise run calibrate.sh, or point CALIBRATION= at an existing calibrated_params.txt)"
 OUT="results/$FIPS/${RUN_NAME:-run}"
 
