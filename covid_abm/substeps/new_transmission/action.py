@@ -42,6 +42,19 @@ class MakeIsolationDecision(SubstepAction):
 
     def forward(self, state, observation):
         # if in debug mode, return random values for isolation
-        will_isolate = torch.rand(self.num_agents, 1).to(self.device)
+        md = self.config["simulation_metadata"]
+        cf = str(md.get("GENERATING_COUNTERFACTUAL", False)).lower() in ("true", "1")
+        if cf:
+            # CRN: isolation draw keyed on (random_seed, _cf_iter, step) -- NOT
+            # on COUNTERFACTUAL_TYPE -- so it is identical across CF policies.
+            t = int(state["current_step"])
+            base = int(md.get("random_seed", md.get("SEED", 42)))
+            it = int(md.get("_cf_iter", 0))
+            s = (((base & 0xFFFFF) * 1_000_003 + it) * 1_000_003 + t) * 131 + 23
+            g = torch.Generator()
+            g.manual_seed(int(s & 0x7FFF_FFFF_FFFF_FFFF))
+            will_isolate = torch.rand(self.num_agents, 1, generator=g).to(self.device)
+        else:
+            will_isolate = torch.rand(self.num_agents, 1).to(self.device)
 
         return {self.output_variables[0]: will_isolate}

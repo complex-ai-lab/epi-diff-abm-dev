@@ -1,0 +1,6 @@
+population=/home/pkbiswas/COVID-ABM/epi-diff-abm-dev/data/population_data/AL_population_data/01031_population.csv
+n_agents=48113
+seed=20260915
+num_steps=182
+community_layer=level-tracking (random_networks.py P0 fix)
+elapsed_s=293

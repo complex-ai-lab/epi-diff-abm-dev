@@ -1,13 +1,68 @@
+# =============================================================================
+# COVID ABM config -- county 01031 (Coffee County, AL), 2020-10-26 .. 2021-04-25
+#   calibrate:  bash calibrate.sh      run (factual + counterfactuals):  bash run.sh
+# main.py reads this file; nothing rewrites it.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# EPIDEMIC PARAMETERS (edit these)
+# -----------------------------------------------------------------------------
+epidemic:
+  EXPOSED_TO_INFECTED_TIME: 3        # E -> I, days
+  INFECTED_TO_RECOVERED_TIME: 5      # I -> R, days
+  # Transmission rate beta (the weekly "R" multiplier in the code). It is
+  # calibrated as a cubic spline in log beta, one value per week, kept in
+  # [BETA_MIN, BETA_MAX].
+  BETA_MIN: 0.1                      # -> R_SPLINE_R_MIN
+  BETA_MAX: 5.0                      # -> R_MAX
+  BETA_INIT: 2.5                     # starting beta for calibration -> R_SPLINE_INIT_R
+  BETA_BURN_IN: 1.0                  # fixed beta during the 14 burn-in days -> BURN_IN_R
+  # Immunity waning: none | fixed | stochastic
+  IMMUNITY_WANING_MODE: fixed
+  RECOVERED_TO_SUSCEPTIBLE_TIME: 60  # R -> S, days (fixed mode)
+  VACCINATED_TO_SUSCEPTIBLE_TIME: 90 # V -> S, days (fixed mode)
+  RECOVERED_WANING_RATE: 0.01        # R -> S daily rate (stochastic mode)
+  VACCINATED_WANING_RATE: 0.00667    # V -> S daily rate (stochastic mode)
+
+# -----------------------------------------------------------------------------
+# RUN SETTINGS: exported as environment variables by main.py, with the same
+# names as in run_p0_county.sh (the P0 / cft_poisson_lam25 recipe). A variable
+# that is already set in the shell takes precedence.
+# -----------------------------------------------------------------------------
+run_settings:
+  NETWORKS_DIR: data/networks/covid_output_p0   # relative to the repo root
+  SEED: 42
+  LAYER_WEIGHTS: "2.25,2,2,1"        # household, school, occupation, community
+  FIX_AGE_SPLIT: 1
+  I0_MAX: 0.01                       # upper bound on the initial infected fraction
+  REPORT_LAG: 0
+  LOSS_MODE: poisson                 # sse | log1p | poisson
+  # calibration
+  EPOCHS: 251
+  R_SPLINE: 1
+  R_SPLINE_J: 26
+  R_SPLINE_DEGREE: 3
+  R_SPLINE_LAMBDA: 25
+  R_SPLINE_ENDPOINT_LAMBDA: 25
+  R_SMOOTH_LAMBDA: 0
+  PARAM_SNAPSHOT_K: 20
+  # counterfactuals (run.sh); CF 7 = factual
+  CF_TYPES: "7"                      # all used in the paper: "1,2,3,4,5,6,7,8,9,10,11,29"
+  CF_ITERS: 30
+  LAYER_ATTRIBUTION: 1
+
 simulation_metadata:
   ALIGN_LLM: true
-  COUNTERFACTUAL_TYPE: 3
+  BURN_IN_DAYS: 14
+  COUNTERFACTUAL_TYPE: 7
   DATE: 202010-202104
   EXECUTION_MODE: heuristic
-  EXPOSED_TO_INFECTED_TIME: 3
+  EXPOSED_TO_INFECTED_TIME: ${epidemic.EXPOSED_TO_INFECTED_TIME}
   EXPOSED_VAR: 1
   GENERATING_COUNTERFACTUAL: false
+  IMMUNITY_WANING_MODE: ${epidemic.IMMUNITY_WANING_MODE}
   INCLUDE_WEEK_COUNT: true
-  INFECTED_TO_RECOVERED_TIME: 5
+  INFECTED_TO_RECOVERED_TIME: ${epidemic.INFECTED_TO_RECOVERED_TIME}
   INFECTED_VAR: 2
   INFINITY_TIME: 130
   INITIAL_INFECTION_RATE: 0.0005
@@ -17,9 +72,10 @@ simulation_metadata:
   NUM_WEEKS_TO_EVAL: 24
   OPENAI_API_KEY: None
   POLICY: weak
-  POPULATION: '01045'
-  RECOVERED_TO_SUSCEPTIBLE_TIME: 100
+  POPULATION: '01031'
+  RECOVERED_TO_SUSCEPTIBLE_TIME: ${epidemic.RECOVERED_TO_SUSCEPTIBLE_TIME}
   RECOVERED_VAR: 3
+  RECOVERED_WANING_RATE: ${epidemic.RECOVERED_WANING_RATE}
   RESCALE_CONFIG: 0
   R_0_VALUE: 2.4
   START_WEEK: 202048
@@ -28,6 +84,10 @@ simulation_metadata:
   USE_GROUND_TRUTH_4WK_AVG: false
   USE_GROUND_TRUTH_CASE_NUMBERS: false
   USE_PICKLE: false
+  VACCINATED_TO_SUSCEPTIBLE_TIME: ${epidemic.VACCINATED_TO_SUSCEPTIBLE_TIME}
+  VACCINATED_VAR: 5
+  VACCINATED_WANING_RATE: ${epidemic.VACCINATED_WANING_RATE}
+  WANING_RATE: ${epidemic.RECOVERED_WANING_RATE}
   WITH_K: true
   WITH_VACC: true
   age_group_file: ${simulation_metadata.population_dir}/age.pickle
@@ -45,11 +105,11 @@ simulation_metadata:
     model_path: saved_model.pth
   mapping_path: ${simulation_metadata.population_dir}/population_mapping.json
   metro_calibration_phase: 0
-  num_agents: 58106
+  num_agents: 48113                  # set at run time from populations/pop<FIPS>
   num_episodes: 5
-  num_steps_per_episode: 182
+  num_steps_per_episode: 196         # 14 burn-in days + 182 observed-window days
   num_substeps_per_step: 1
-  population_dir: /home/facundoy/research/epi-diff-abm-dev/populations/pop39013
+  population_dir: populations/pop01031  # set at run time from populations/pop<FIPS>
   quarantine_days: 12
   test_ineligible_days: 2
   test_result_delay_days: 3
@@ -214,11 +274,12 @@ state:
       learnable: false
       name: Infectiousness of Infector
       shape:
-      - 5
+      - 6
       value:
       - 0.0
       - 0.33
       - 0.72
+      - 0.0
       - 0.0
       - 0.0
     SFSusceptibility:
@@ -261,7 +322,7 @@ state:
       name: Time from Exposed to Infected
       shape:
       - 1
-      value: 3
+      value: ${epidemic.EXPOSED_TO_INFECTED_TIME}
     infected_to_recovered_time:
       dtype: float
       initialization_function: null
@@ -269,7 +330,7 @@ state:
       name: Infected to Recovered time
       shape:
       - 1
-      value: 5
+      value: ${epidemic.INFECTED_TO_RECOVERED_TIME}
     lam_gamma_integrals:
       dtype: float
       initialization_function:

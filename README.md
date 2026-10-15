@@ -1,107 +1,96 @@
-# Epidemic Differentiable ABM
+# Epidemic Differentiable ABM — single-county test package (`test-ABM` branch)
 
-This repository provides the implementation of an Agent-Based Model (ABM) benchmark for COVID-19 transmission and intervention modeling.
+This branch is a minimal copy of the COVID-19 ABM for **one county, 01031 (Coffee County, AL)**,
+2020-10-26 → 2021-04-25. It has everything needed to **calibrate** the model and **run** it, including the
+counterfactuals. It uses the repo layout of `b5a6372` (Facundo Yan's last commit) and the model code from
+`preetom-dev`. The recipe is the P0 / `cft_poisson_lam25` setup:
+- P0 population and networks
+- per-layer contact weights
+- 14-day burn-in
+- Poisson loss with a spline on log beta
+- fixed immunity waning (R→S 60 days, V→S 90 days)
+- a separate vaccinated (V) stage with the observed age-phased (65+ first) vaccine allocation
+- common random numbers across counterfactuals
 
-## Papers based on this project
-* [KDD 2026] [Benchmarking Counterfactual Prediction in Epidemic Time Series with Time-Varying Interventions](https://github.com/complex-ai-lab/epi-cf-benchmark)
+## Quick start
 
-## Overview
-The goal of this benchmark is to provide a standardized environment for simulating COVID-19 dynamics and testing various intervention strategies (counterfactuals). The pipeline follows a structured workflow:
-1.  **Synthetic Population & Network Generation**: We generate digital representations of agents and their interaction environments (digital twins) for specific counties.
-2.  **Simulation & Calibration**: We use differentiable simulations to calibrate model parameters to historical COVID-19 data.
-3.  **Counterfactual Analysis**: We evaluate the impact of hypothetical policy changes (e.g., toggling school or workplace restrictions) compared to factual history.
-
-## Requirements & API Keys
-
-### Dependencies
-The project requires a Python environment (>=3.9). Install all requirements using:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt   # Python 3.11, CUDA GPU recommended
+
+bash calibrate.sh                 # ~25 min on one A100 -> result_graphs/01031/.../calibrated_params.txt
+bash run.sh                       # factual run (CF 7)                 -> results/01031/run/
 ```
 
-### API Keys
-The data preparation scripts require access to external APIs. Create a `.env` file in the root directory with the following keys:
-*   `COVIDCAST_API_KEY`: Required for the [Delphi COVIDcast API](https://cmu-delphi.github.io/delphi-epidata/api/covidcast_clients.html) to fetch epidemiological data.
-*   `CENSUS_API_KEY`: Required for the [US Census Bureau API](https://api.census.gov/data/key_signup.html) to fetch demographic distributions.
-*   `NETWORKS_DIR`: Optional (defaults to `data/networks/covid_output_causal`). The directory path where generated mobility networks are stored and loaded from.
+`EPOCHS=2 bash calibrate.sh` and `CF_TYPES=7 CF_ITERS=2 bash run.sh` are quick smoke tests. Any key in
+`run_settings` can be overridden from the shell this way. Use `PY=/path/to/python` to choose the interpreter.
 
-## How to run
+## Config — `covid_abm/yamls/config.yaml`
 
-### Step 1: Data Preparation
-In this step, we generate synthetic populations and mobility networks by combining real-world time series demographic and epidemiological data.
+The file starts with the **epidemic parameters**:
 
-**What we are generating:**
-*   **Synthetic Populations**: We use US Census data (household size, age, and occupation distributions) to create a set of digital agents that statistically match the demographic profile of a target county.
-*   **Interaction Networks**: We construct mobility and contact networks (Household, School, and Occupational) that define how agents interact. This procedure maps agents to specific interaction "venues" based on their demographic attributes (e.g., assigning children to schools and adults to specific industry sectors).
+| key | meaning |
+|---|---|
+| `EXPOSED_TO_INFECTED_TIME` | E → I, days (3) |
+| `INFECTED_TO_RECOVERED_TIME` | I → R, days (5) |
+| `BETA_MIN`, `BETA_MAX` | box for the calibrated weekly transmission rate beta (0.1, 5) |
+| `BETA_INIT` | beta at the start of calibration (2.5) |
+| `BETA_BURN_IN` | fixed beta during the 14 burn-in days (1.0) |
+| `IMMUNITY_WANING_MODE`, `RECOVERED_TO_SUSCEPTIBLE_TIME`, `VACCINATED_TO_SUSCEPTIBLE_TIME`, `*_WANING_RATE` | waning of natural and vaccine immunity |
 
-**Execution:**
-To execute the entire data preparation pipeline (fetching data and generating networks), run:
-```bash
-bash scripts/data_prep.sh
+Next comes `run_settings`. `main.py` exports these as the environment variables that `abm_nets.py` and
+`transition.py` read, under the same names as in `run_p0_county.sh`. They cover:
+- the networks directory, seed and layer weights
+- `I0_MAX`, the loss and the spline settings, and the number of epochs
+- the counterfactual types, iterations and layer attribution
+
+The `BETA_*` keys map to `R_SPLINE_R_MIN`, `R_MAX`, `R_SPLINE_INIT_R` and `BURN_IN_R`. After that come the
+usual `simulation_metadata`, `state` and `substeps` sections. Nothing rewrites the config file any more (see
+the change list at the end).
+
+## Layout
+
 ```
-While `data_prep.sh` automates the process, you can manually run scripts in the `scripts/` and `networks/` folders for more control. Both directories contain their own respective `README.md` files with detailed instructions.
-
-**Important**: Ensure that you run the network generation scripts (located in the `networks/` folder) to create the interaction networks required for the simulation, and make sure to run the script in the `scripts/` folder first.
-
-*Note: Before running, ensure your `.env` file is set up and that the target counties/states are correctly configured in `scripts/delphi_api.py` and `scripts/census.py`.*
-
-### Step 2: Main Experiment
-The core simulation and calibration logic is managed by `abm_nets.py`, which is executed through `main.py`. The experiment is divided into two primary phases: Calibration and Counterfactual Generation.
-
-#### A. Calibration (Training)
-In this phase, the model's learnable parameters (e.g., transmission rates, susceptibility) are calibrated to match historical COVID-19 data (cases and deaths).
-*   **Goal**: Find the parameter set that minimizes the loss between simulated and actual data.
-*   **Configuration**: Ensure `GENERATING_COUNTERFACTUAL` is set to `false` in `covid_abm/yamls/config.yaml`.
-*   **Epochs**: The number of training iterations can be configured in `abm_nets.py` by modifying the `epochs` variable (default is typically `251`).
-
-#### B. Counterfactual Generation
-Once the model is calibrated, you can run counterfactual scenarios to evaluate "what if" different policies (like school closures or work restrictions) had been implemented.
-*   **Goal**: Evaluate the impact of hypothetical interventions using calibrated parameters.
-*   **Configuration**: Set `GENERATING_COUNTERFACTUAL` to `true` in `covid_abm/yamls/config.yaml`.
-*   **Selecting Scenarios & Iterations**: You can select which counterfactual types to run and how many stochastic iterations to perform for each by modifying the following block in `abm_nets.py`:
-
-```python
-if generating_counterfactual:
-    cf_types_to_run = range(7, 11)  # Select the range of Counterfactual Types
-
-    for cf_type in cf_types_to_run:
-        # ...
-        num_iterations = 30  # Number of stochastic runs per scenario
-        for num in range(num_iterations):
-            # ...
+main.py, abm_nets.py, constants.py   entry point, calibration loop, counterfactual loop
+calibrate.sh, run.sh                 the two launchers
+covid_abm/                           model (transition.py = disease dynamics, spline_basis.py) + yamls/config.yaml
+agent_torch/                         AgentTorch framework
+populations/pop01031/                age.pickle, disease_stages.csv, intervention.csv (196 days incl. 14-day
+                                     burn-in, school/occ flags, vaccines, vaccines_65plus), burnin_days.txt
+data/processed_data/01031/202010-202104/daily_data.csv      observed cases (fit uses cases_singular)
+data/population_data/AL_population_data/01031_population.csv   P0 agents (occupation, household) for CF 18-28
+data/networks/covid_output_p0/01031/mobility_networks/      household, school, daily occnets / randnets
 ```
 
-#### Configuration Requirements
-Before running either phase, ensure the following configurations are correctly set:
+The networks are compressed `.npz` edge lists. They hold the same edges, in the same order, as the P0 networkx
+`.pkl` files; `transition.py` loads the `.npz` when it exists and falls back to `.pkl` otherwise.
 
-**1. `abm_nets.py` Modifications:**
-*   **Population Import**: Update the population import statement (e.g., `from populations import pop01045`).
-*   **Population Loader**: Update the `Executor` initialization in `eval_net` to use the correct population module (e.g., `sim = Executor(covid_abm, pop_loader=LoadPopulation(pop01045))`).
-*   **Scenario Selection**: Update `cf_types_to_run` to specify which intervention types to execute.
+## Outputs
 
-#### Counterfactual Types
-The simulation supports 10 distinct intervention scenarios, defined by combinations of School and Occupational (Occ) restrictions:
+`calibrate.sh` writes to `result_graphs/01031/202010-202104/0.0005_3_5_True_True_False_metro_0/`:
+- `calibrated_params.txt`: 28 rows — 26 weekly beta values, then the initial infected fraction, then k
+- `r_daily.txt`, `spline_coef.txt`, `spline_meta.json` and `training_loss.csv`
 
-| Type | School | Occ | Description |
-| :--- | :--- | :--- | :--- |
-| **1** | 0 | 0 | No restrictions (Both fixed to 0) |
-| **2** | 1 | 0 | School closed (1), Occ open (0) |
-| **3** | 0 | 1 | School open (0), Occ closed (1) |
-| **4** | 1 | 1 | Full restrictions (Both fixed to 1) |
-| **5** | 0 | Factual | School open (0), Occ remains as it was historically |
-| **6** | 0 | Counterfactual | School open (0), Occ is toggled (0<->1) |
-| **7** | Factual | Factual | **Baseline Factual scenario** (Matches history) |
-| **8** | Counterfactual | Factual | School is toggled, Occ remains factual |
-| **9** | Factual | Counterfactual | School remains factual, Occ is toggled |
-| **10** | Counterfactual | Counterfactual | **Both School and Occ are toggled** |
+`run.sh` writes to `results/01031/run/`:
 
-To run the experiment:
-```bash
-python main.py
-```
+| file | contents |
+|---|---|
+| `beta_daily.csv` | `day, date, phase, week, beta` — beta each simulated day, including the burn-in |
+| `seirv_daily.csv` | `day, date, S, E, I, R, V` — daily agent counts in the factual run (mean over iterations) |
+| `cases_sim_vs_observed.csv` | `day, date, simulated_cases, simulated_cases_sd, observed_cases` — reported cases on the 168 scored days |
+| `cf_raw_<type>.csv`, `counterfactual_data<type>*.csv`, `*.png` | per counterfactual type, as before |
 
-## Credits and Attributions
-This project includes code from the following sources. We are grateful for their contributions that made this work possible.
+`day` is the simulation step, so days 0–13 are the burn-in and day 14 is 2020-10-26. The three summary CSVs
+come from CF 7 (the factual run), so `CF_TYPES` must include 7.
 
-**agenttorch**
-*   **Description**: Our `agent_torch` and `covid_abm` folders are based on the [agenttorch](https://github.com/agenttorch/agenttorch) repository.
+## Changes relative to `preetom-dev`
+
+* `config.yaml` now begins with the `epidemic` and `run_settings` blocks. `main.py` exports them as environment
+  variables, so no shell wrapper is needed for the recipe.
+* `agent_torch/core/dataloader.py` keeps the population path and agent count in memory. Before, it rewrote
+  `config.yaml` (sorted, comments lost) on every run.
+* `abm_nets.py` writes the 3 summary CSVs at the end of CF 7.
+* `transition.py` reads `.npz` networks.
+* `main.py` is the last committed version (`a2ff0f5`). The uncommitted `MODEL_PKG` / `POP_SUFFIX` horizon
+  switches are not included.
+* Data preparation, network generation, the horizon/targeted-CF/analysis code, other counties and the Slurm
+  scripts are not on this branch.

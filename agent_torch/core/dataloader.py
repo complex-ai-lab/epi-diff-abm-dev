@@ -33,8 +33,11 @@ class DataLoaderBase(ABC):
         return os.path.join(input_data_dir, data)
 
     def set_config_attribute(self, attribute, value):
+        # Kept in memory and applied in get_config(); config.yaml is never rewritten.
         self.config["simulation_metadata"][attribute] = value
-        self._write_config()  # Save the config file after setting the attribute
+        if not hasattr(self, "_overrides"):
+            self._overrides = {}
+        self._overrides[attribute] = value
 
     def _write_config(self):
         with open(
@@ -53,7 +56,6 @@ class DataLoader(DataLoaderBase):
         self.set_input_data_dir(population.population_folder_path)
         self.set_population_size(population.population_size)
         self.register_resolvers = True
-        self._write_config()
 
     def _read_config(self):
         with open(self.config_path, "r") as file:
@@ -68,9 +70,13 @@ class DataLoader(DataLoaderBase):
         return self.set_config_attribute("num_agents", population_size)
 
     def get_config(self):
-        omega_config = read_config(self.config_path, self.register_resolvers)
+        from omegaconf import OmegaConf
+        read_config(self.config_path, self.register_resolvers)  # registers resolvers, validates the file
         self.register_resolvers = False
-        return omega_config
+        cfg = OmegaConf.load(self.config_path)
+        for key, value in getattr(self, "_overrides", {}).items():
+            cfg.simulation_metadata[key] = value
+        return OmegaConf.to_object(cfg)
 
 
 class LoadPopulation:

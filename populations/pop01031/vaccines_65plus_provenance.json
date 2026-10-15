@@ -1,0 +1,13 @@
+{
+  "fips": "01031",
+  "rows": 182,
+  "date_start": "2020-10-26",
+  "date_end": "2021-04-25",
+  "cum_vaccines": 10778.0,
+  "cum_vaccines_65plus": 5436.0,
+  "share_65plus": 0.5043607348302097,
+  "expected_cum_65plus": 5436,
+  "vaccines_max_abs_diff_vs_committed": 0.0,
+  "query_url": "https://data.cdc.gov/resource/8xkx-amqh.csv?fips=01031&%24select=date%2Cfips%2Cadministered_dose1_recip%2Cadministered_dose1_recip_65plus&%24where=date+between+%272020-10-25T00%3A00%3A00%27+and+%272021-04-25T00%3A00%3A00%27&%24limit=50000&%24order=date",
+  "retrieved_utc": "2026-09-12T22:33:15+00:00"
+}
