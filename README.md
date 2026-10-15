@@ -12,10 +12,12 @@ and `cf_raw_7.csv`).
 ```bash
 git clone -b test-ABM https://github.com/complex-ai-lab/epi-diff-abm-dev.git
 cd epi-diff-abm-dev
-pip install -r requirements.txt        # Python 3.11; an NVIDIA GPU is strongly recommended
+python3.11 -m venv .venv               # Python 3.11 (check `python --version`; clusters often default to another)
+.venv/bin/pip install -r requirements.txt   # an NVIDIA GPU is strongly recommended
 ```
 
-Both scripts use `python` by default. Use `PY=/path/to/python bash ...` to choose a different interpreter.
+Both scripts use `python` by default. Either activate the venv (`source .venv/bin/activate`) or pass it
+explicitly, e.g. `PY=.venv/bin/python bash calibrate.sh`.
 
 ## 2. The config file — `config.yaml` (repo root)
 
