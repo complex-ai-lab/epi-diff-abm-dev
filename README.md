@@ -178,6 +178,27 @@ edit them directly.
 | `data/population_data/AL_population_data/01031_population.csv` | synthetic population (age, household, occupation), used by the vaccine-priority and household counterfactuals |
 | `data/networks/covid_output_p0/01031/mobility_networks/` | contact networks: `HOUSEHOLD_NETWORK.npz`, `SCHOOL_NETWORK.npz`, `occnets/<t>.npz` and `randnets/<t>.npz` (workplace and community, one per observed day) |
 | `result_graphs/`, `results/` | outputs written by the scripts (git-ignored) |
+| `reference_results/<FIPS>/` | stored factual (CF 7) results for 01031 and 10 other counties (see below) |
+
+### Reference results for other counties
+
+`reference_results/` holds `beta_daily.csv`, `seirv_daily.csv` and `cases_sim_vs_observed.csv` for 11 counties,
+built from the stored calibrated P0 runs (CF 7, 30 iterations) on `preetom-dev`:
+
+| FIPS | county | FIPS | county |
+|---|---|---|---|
+| 01031 | Coffee, AL | 30029 | Flathead, MT |
+| 13013 | Barrow, GA | 36051 | Livingston, NY |
+| 17037 | DeKalb, IL | 42059 | Greene, PA |
+| 19027 | Carroll, IA | 47005 | Benton, TN |
+| 21071 | Floyd, KY | 51149 | Prince George, VA |
+| 27005 | Becker, MN | | |
+
+The columns are the same as in a `run.sh` output, with one difference: `cases_sim_vs_observed.csv` covers
+only the 168 observed days (2020-10-26 to 2021-04-11), because the stored runs did not keep simulated cases
+after the last observed day. `beta_daily.csv` and `seirv_daily.csv` cover all 196 days. For 01031 the files
+match `bash run.sh` (SD to within float rounding). Only 01031 has data and networks in this branch, so the
+other counties cannot be rerun here.
 
 The networks are compressed edge lists, readable with `np.load(path)["edges"]` (one row per contact pair).
 
