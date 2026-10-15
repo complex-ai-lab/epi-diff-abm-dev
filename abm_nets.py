@@ -719,17 +719,42 @@ def eval_net(sim, runner):
         # (e.g. a waning-mode fit) without staging it into result_graphs/...
         param_file = os.environ.get("CF_PARAM_FILE") or os.path.join(base_dir, "calibrated_params.txt")
 
-        if not os.path.exists(param_file):
+        # BETA / INITIAL_INFECTED / K in config.yaml (exported by main.py as
+        # BETA_OVERRIDE / I0_OVERRIDE / K_OVERRIDE, JSON) replace the calibrated
+        # values. With all three set, no calibration is needed.
+        overrides = {name: json.loads(os.environ[name])
+                     for name in ("BETA_OVERRIDE", "I0_OVERRIDE", "K_OVERRIDE")
+                     if os.environ.get(name, "").strip() not in ("", "null", "None")}
+
+        if os.path.exists(param_file):
+            try:
+                param_array = np.loadtxt(param_file)
+            except Exception as e:
+                print(f"\n[ERROR] Failed to load calibrated parameters from '{param_file}': {e}\n")
+                sys.exit(1)
+        elif len(overrides) == 3:
+            param_array = np.zeros(num_weeks + 2)
+        else:
             print(f"\n[ERROR] Calibrated parameter file not found at: '{param_file}'")
-            print(f"[ERROR] Cannot run counterfactual simulations without calibrated parameters.")
-            print(f"[ERROR] Please run model calibration first for county {population} (using run_all_sims.sh or main.py).\n")
+            print(f"[ERROR] Run calibrate.sh first, or set all of BETA, INITIAL_INFECTED and K in config.yaml.\n")
             sys.exit(1)
 
-        try:
-            param_array = np.loadtxt(param_file)
-        except Exception as e:
-            print(f"\n[ERROR] Failed to load calibrated parameters from '{param_file}': {e}\n")
-            sys.exit(1)
+        param_array = np.asarray(param_array, dtype=float).ravel()
+        if "BETA_OVERRIDE" in overrides:
+            beta = np.atleast_1d(np.asarray(overrides["BETA_OVERRIDE"], dtype=float))
+            if beta.size == 1:
+                beta = np.repeat(beta, num_weeks)
+            if beta.size != num_weeks:
+                raise ValueError(f"BETA must be one number or a list of {num_weeks} weekly values, got {beta.size}")
+            param_array[:num_weeks] = beta
+        if "I0_OVERRIDE" in overrides:
+            param_array[-2] = float(overrides["I0_OVERRIDE"])
+        if "K_OVERRIDE" in overrides:
+            param_array[-1] = float(overrides["K_OVERRIDE"])
+        if overrides:
+            print(f"[INFO] parameter overrides from config: {sorted(overrides)}; "
+                  f"beta mean {param_array[:num_weeks].mean():.4f}, "
+                  f"initial infected {param_array[-2]:.6f}, k {param_array[-1]:.4f}", flush=True)
 
         param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
         param_tensor = param_tensor[:, None] if param_tensor.ndim == 1 else param_tensor
@@ -1011,6 +1036,7 @@ def eval_net(sim, runner):
         if epoch == epochs - 1:
             substep = runner.initializer.transition_function['0'].new_transmission
             output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
+            os.makedirs(output_dir, exist_ok=True)  # not yet created when EPOCHS <= curriculum length
             path = f'{output_dir}/training_proportions.csv'
             substep.save_proportions_to_disk(path)
             if PARAM_SNAPSHOT_K > 1 and len(_param_history) > 1:

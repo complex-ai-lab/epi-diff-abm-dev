@@ -21,6 +21,9 @@ class DataLoaderBase(ABC):
         pass
 
     def _get_config_path(self, model):
+        # ABM_CONFIG (set by main.py, default: config.yaml at the repo root) wins
+        if os.environ.get("ABM_CONFIG"):
+            return os.environ["ABM_CONFIG"]
         model_path = self._get_folder_path(model)
         return os.path.join(model_path, "yamls", "config.yaml")
 

@@ -1,7 +1,8 @@
 # =============================================================================
 # COVID ABM config -- county 01031 (Coffee County, AL), 2020-10-26 .. 2021-04-25
-#   calibrate:  bash calibrate.sh      run (factual + counterfactuals):  bash run.sh
-# main.py reads this file; nothing rewrites it.
+#   1) bash calibrate.sh   fits weekly beta, initial infected fraction, k to cases
+#   2) bash run.sh         runs the model (factual, CF 7) -> results/01031/run/
+# Edit the EPIDEMIC PARAMETERS block, then re-run. See README.md.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -10,14 +11,24 @@
 epidemic:
   EXPOSED_TO_INFECTED_TIME: 3        # E -> I, days
   INFECTED_TO_RECOVERED_TIME: 5      # I -> R, days
-  # Transmission rate beta (the weekly "R" multiplier in the code). It is
-  # calibrated as a cubic spline in log beta, one value per week, kept in
-  # [BETA_MIN, BETA_MAX].
-  BETA_MIN: 0.1                      # -> R_SPLINE_R_MIN
-  BETA_MAX: 5.0                      # -> R_MAX
-  BETA_INIT: 2.5                     # starting beta for calibration -> R_SPLINE_INIT_R
-  BETA_BURN_IN: 1.0                  # fixed beta during the 14 burn-in days -> BURN_IN_R
-  # Immunity waning: none | fixed | stochastic
+
+  # --- Transmission rate beta used by run.sh ---------------------------------
+  #   null           -> the calibrated weekly beta (calibrated_params.txt)
+  #   a number       -> that beta in every week, e.g. BETA: 1.2
+  #   a list of 26   -> one beta per week (week 0 starts 2020-10-26)
+  BETA: null
+  INITIAL_INFECTED: null             # fraction infected at day 0; null -> calibrated
+  K: null                            # reporting fraction (cases = k x new infections); null -> calibrated
+  # With BETA, INITIAL_INFECTED and K all set, run.sh needs no calibration.
+
+  # --- Beta during calibration (calibrate.sh) ---------------------------------
+  # Calibrated as a cubic spline in log beta, one value per week.
+  BETA_MIN: 0.1                      # lower bound
+  BETA_MAX: 5.0                      # upper bound
+  BETA_INIT: 2.5                     # starting value
+  BETA_BURN_IN: 1.0                  # fixed beta during the 14 burn-in days (both scripts)
+
+  # --- Immunity waning: none | fixed | stochastic -----------------------------
   IMMUNITY_WANING_MODE: fixed
   RECOVERED_TO_SUSCEPTIBLE_TIME: 60  # R -> S, days (fixed mode)
   VACCINATED_TO_SUSCEPTIBLE_TIME: 90 # V -> S, days (fixed mode)
@@ -27,7 +38,7 @@ epidemic:
 # -----------------------------------------------------------------------------
 # RUN SETTINGS: exported as environment variables by main.py, with the same
 # names as in run_p0_county.sh (the P0 / cft_poisson_lam25 recipe). A variable
-# that is already set in the shell takes precedence.
+# already set in the shell takes precedence, e.g. `EPOCHS=2 bash calibrate.sh`.
 # -----------------------------------------------------------------------------
 run_settings:
   NETWORKS_DIR: data/networks/covid_output_p0   # relative to the repo root

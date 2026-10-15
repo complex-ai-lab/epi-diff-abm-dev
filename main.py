@@ -10,7 +10,13 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 import yaml
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "covid_abm", "yamls", "config.yaml")
+import json
+
+# The model config: config.yaml at the repo root, or the file named by ABM_CONFIG.
+# AgentTorch's DataLoader reads the same ABM_CONFIG.
+CONFIG_PATH = os.path.abspath(os.environ.get("ABM_CONFIG") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "config.yaml"))
+os.environ["ABM_CONFIG"] = CONFIG_PATH
 
 
 def export_run_settings(config_path=CONFIG_PATH):
@@ -26,6 +32,10 @@ def export_run_settings(config_path=CONFIG_PATH):
         "R_MAX": epi["BETA_MAX"],
         "R_SPLINE_INIT_R": epi["BETA_INIT"],
         "BURN_IN_R": epi["BETA_BURN_IN"],
+        # run.sh only: fixed values instead of the calibrated ones (null = calibrated)
+        "BETA_OVERRIDE": json.dumps(epi.get("BETA")),
+        "I0_OVERRIDE": json.dumps(epi.get("INITIAL_INFECTED")),
+        "K_OVERRIDE": json.dumps(epi.get("K")),
     })
     for key, value in env.items():
         os.environ.setdefault(key, str(value))
