@@ -12,4 +12,5 @@ PyYAML==6.0.3
 omegaconf==2.3.1
 python-dotenv==1.2.3
 tqdm==4.70.0
-dask==2026.8.0
+dask[dataframe]==2026.8.0              # agent_torch imports dask.dataframe, which needs pyarrow
+pyarrow==26.0.0
