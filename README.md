@@ -200,6 +200,11 @@ after the last observed day. `beta_daily.csv` and `seirv_daily.csv` cover all 19
 match `bash run.sh` (SD to within float rounding). Only 01031 has data and networks in this branch, so the
 other counties cannot be rerun here.
 
+Each folder also has `config_<FIPS>.yaml`, the config of that run in the same format as `config.yaml`, with the
+county's population fields and its calibrated `BETA` (26 weekly values), `INITIAL_INFECTED` and `K` filled in.
+`CONFIG=reference_results/01031/config_01031.yaml bash run.sh` reproduces the stored 01031 run byte for byte
+without a calibration file.
+
 The networks are compressed edge lists, readable with `np.load(path)["edges"]` (one row per contact pair).
 
 ## 7. Code map
