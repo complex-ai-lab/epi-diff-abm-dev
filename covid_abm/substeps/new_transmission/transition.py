@@ -164,20 +164,20 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.burn_in_r = float(_bir) if _bir not in ("", "None", "none") else None
         if self.burn_in_r is not None and self.burn_in_r <= 0:
             raise ValueError(f"BURN_IN_R must be > 0, got {self.burn_in_r}")
-        # BETA_DAILY_OVERRIDE (run.sh only; built by main.py from BETA_DAILY in
+        # R_T_DAILY_OVERRIDE (run.sh only; built by main.py from R_T_DAILY in
         # config.yaml): JSON {"start_day": s, "values": [...]}. In a run
         # (GENERATING_COUNTERFACTUAL), simulation day t uses values[t - s] for
-        # s <= t < s + len(values), replacing the weekly / burn-in beta.
-        _bd = os.environ.get("BETA_DAILY_OVERRIDE", "").strip()
-        self.beta_daily = None
+        # s <= t < s + len(values), replacing the weekly / burn-in R.
+        _bd = os.environ.get("R_T_DAILY_OVERRIDE", "").strip()
+        self.r_t_daily = None
         if _bd not in ("", "null", "None"):
             _spec = json.loads(_bd)
-            self.beta_daily = (int(_spec["start_day"]),
+            self.r_t_daily = (int(_spec["start_day"]),
                                [float(v) for v in _spec["values"]])
-            if any(v < 0 for v in self.beta_daily[1]):
-                raise ValueError("BETA_DAILY values must be >= 0")
-        # [t, beta used on day t], recorded in runs only (beta_daily.csv)
-        self.beta_history = []
+            if any(v < 0 for v in self.r_t_daily[1]):
+                raise ValueError("R_T_DAILY values must be >= 0")
+        # [t, R used on day t], recorded in runs only (r_t_daily.csv)
+        self.r_t_history = []
 
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         self.data_dir = os.path.join(project_root, 'data')
@@ -217,6 +217,25 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.INFECTED_TO_RECOVERED_TIME = self.config["simulation_metadata"][
             "INFECTED_TO_RECOVERED_TIME"
         ]
+
+        # --- SEIRV-equivalence switches (config.yaml epidemic block) ----------
+        #   MIXING: network     -> force on agent i from its infectious contacts (_lam)
+        #           mean_field  -> every agent gets force R * (#INFECTED) / N: no networks,
+        #                          no age susceptibility, no E infectiousness, no gamma
+        #                          infectiousness profile, no layer weights or closures
+        #   STAGE_DURATIONS: fixed       -> E and I last a fixed number of days
+        #                    exponential -> each day an agent leaves E with probability
+        #                                   1 - exp(-1/EXPOSED_TO_INFECTED_TIME), and I with
+        #                                   1 - exp(-1/INFECTED_TO_RECOVERED_TIME)
+        # mean_field + exponential (+ waning none or stochastic) is a stochastic SEIRV model;
+        # seirv.py runs the same model without agents.
+        _md = self.config["simulation_metadata"]
+        self.mixing = _md.get("MIXING", "network")
+        self.stage_durations = _md.get("STAGE_DURATIONS", "fixed")
+        if self.mixing not in ("network", "mean_field"):
+            raise ValueError(f"MIXING must be network or mean_field, got {self.mixing!r}")
+        if self.stage_durations not in ("fixed", "exponential"):
+            raise ValueError(f"STAGE_DURATIONS must be fixed or exponential, got {self.stage_durations!r}")
 
         # --- Configurable immunity waning (R -> S and VACCINATED -> S) --------
         # Selected before the run via config.yaml; not learnable, not a
@@ -264,6 +283,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
             "init_infect": 11, "isolation": 23, "interv_school": 31,
             "interv_occ": 43, "vaccine": 57, "expose": 61, "waning": 79,
             "interv_occ_selective": 47, "vaccine_hh": 83,
+            "dur_exposed": 89, "dur_infected": 101,
         }
 
         # per-age-group daily NEW exposures [t, child_new, adult_new, elderly_new]
@@ -281,6 +301,8 @@ class NewTransmission(SubstepTransitionMessagePassing):
         # History rows: [t, hh_new, school_new, occ_new, comm_new,
         #                hh_force, school_force, occ_force, comm_force, new_total]
         self.layer_attribution = os.environ.get("LAYER_ATTRIBUTION", "0") == "1"
+        if self.config["simulation_metadata"].get("MIXING", "network") == "mean_field":
+            self.layer_attribution = False   # no contact layers to attribute to
         self.layer_attribution_history = []
         self._edge_layer = None
         self.LAYER_NAMES = ("hh", "school", "occ", "comm")
@@ -539,8 +561,26 @@ class NewTransmission(SubstepTransitionMessagePassing):
         current_stages = newly_exposed_today*self.EXPOSED_VAR + stage_progression
         return current_stages
 
+    def _draw_stage_duration(self, t, mean_days, call_id, like):
+        """STAGE_DURATIONS: exponential. Days spent in a stage when leaving it has daily
+        probability p = 1 - exp(-1 / mean_days): Geometric(p) on 1, 2, ..., one draw per agent."""
+        p = 1.0 - math.exp(-1.0 / mean_days)
+        gen = self._crn_gen(t, call_id) if self._generating_cf() else None
+        u = torch.rand(like.shape, generator=gen, device=like.device)
+        return (torch.floor(torch.log1p(-u) / math.log1p(-p)) + 1).to(like.dtype)
+
     def update_transition_times(self, t, agents_next_stage_times, newly_exposed_today, current_stages):
         """Note: not differentiable"""
+        if self.stage_durations == "exponential":
+            new_transition_times = torch.clone(agents_next_stage_times)
+            curr_stages = torch.clone(current_stages).long()
+            d_exposed = self._draw_stage_duration(t, self.EXPOSED_TO_INFECTED_TIME, "dur_exposed", agents_next_stage_times)
+            d_infected = self._draw_stage_duration(t, self.INFECTED_TO_RECOVERED_TIME, "dur_infected", agents_next_stage_times)
+            leaving_i = (curr_stages == self.INFECTED_VAR) & (agents_next_stage_times == t)
+            leaving_e = (curr_stages == self.EXPOSED_VAR) & (agents_next_stage_times == t)
+            new_transition_times[leaving_i] = self.INFINITY_TIME
+            new_transition_times[leaving_e] = t + d_infected[leaving_e]
+            return newly_exposed_today*(t + d_exposed) + (1 - newly_exposed_today)*new_transition_times
         exposed_to_infected_time = self.EXPOSED_TO_INFECTED_TIME
         new_transition_times = torch.clone(agents_next_stage_times) 
         curr_stages = torch.clone(current_stages).long()
@@ -893,6 +933,12 @@ class NewTransmission(SubstepTransitionMessagePassing):
     def update_initial_times(self, agents_next_stage_times, agents_infected_time, agents_stages):
         infected_to_recovered_time = self.INFECTED_TO_RECOVERED_TIME
         exposed_to_infected_time = self.EXPOSED_TO_INFECTED_TIME
+        if self.stage_durations == "exponential":
+            # seeded at t = 0: leave E / I at a random step >= 1
+            exposed_to_infected_time = self._draw_stage_duration(
+                0, self.EXPOSED_TO_INFECTED_TIME, "dur_exposed", agents_next_stage_times)[agents_stages == self.EXPOSED_VAR]
+            infected_to_recovered_time = self._draw_stage_duration(
+                0, self.INFECTED_TO_RECOVERED_TIME, "dur_infected", agents_next_stage_times)[agents_stages == self.INFECTED_VAR]
 
         agents_infected_time[agents_stages==self.EXPOSED_VAR] = -1
         agents_infected_time[agents_stages==self.INFECTED_VAR] = -1*self.EXPOSED_TO_INFECTED_TIME
@@ -1548,7 +1594,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
             self.age_incidence_history = []
             self.essential_incidence_history = []
             self.layer_attribution_history = []
-            self.beta_history = []
+            self.r_t_history = []
 
         R = (R_tensor.T * week_one_hot).sum()
 
@@ -1561,16 +1607,16 @@ class NewTransmission(SubstepTransitionMessagePassing):
             R = torch.as_tensor(self.burn_in_r, dtype=R.dtype, device=R.device)
 
         if generating_counterfactual:
-            if self.beta_daily is not None:
-                _start, _vals = self.beta_daily
+            if self.r_t_daily is not None:
+                _start, _vals = self.r_t_daily
                 if t == 0 and (_start > self.burn_in_days or _start + len(_vals) < self.num_timesteps):
                     raise ValueError(
-                        f"BETA_DAILY covers simulation days {_start}..{_start + len(_vals) - 1}, but the run needs "
+                        f"R_T_DAILY covers simulation days {_start}..{_start + len(_vals) - 1}, but the run needs "
                         f"days {self.burn_in_days}..{self.num_timesteps - 1} (a list starts on the first observed "
                         f"day; give at least HORIZON_DAYS values)")
                 if _start <= t < _start + len(_vals):
                     R = torch.as_tensor(_vals[t - _start], dtype=R.dtype, device=R.device)
-            self.beta_history.append([t, float(R.detach())])
+            self.r_t_history.append([t, float(R.detach())])
 
         current_stages = state['agents']['citizens']['disease_stage']
         agents_ages = get_by_path(state, re.split("/", input_variables["age"]))
@@ -1660,16 +1706,21 @@ class NewTransmission(SubstepTransitionMessagePassing):
             all_node_attr, edge_index=all_edgelist, edge_attr=all_edgeattr, t=t
         )
 
-        new_transmission = self.propagate(
-            agents_data.edge_index,
-            x=agents_data.x,
-            edge_attr=agents_data.edge_attr,
-            t=agents_data.t,
-            R=R,
-            SFSusceptibility=SFSusceptibility,
-            SFInfector=SFInfector,
-            lam_gamma_integrals=all_lam_gamma.squeeze(),
-        )
+        if self.mixing == "mean_field":
+            n_infected = (current_stages == self.INFECTED_VAR).sum()
+            new_transmission = (R * n_infected / current_stages.size(0)) * torch.ones(
+                current_stages.size(0), 1, device=self.device)
+        else:
+            new_transmission = self.propagate(
+                agents_data.edge_index,
+                x=agents_data.x,
+                edge_attr=agents_data.edge_attr,
+                t=agents_data.t,
+                R=R,
+                SFSusceptibility=SFSusceptibility,
+                SFInfector=SFInfector,
+                lam_gamma_integrals=all_lam_gamma.squeeze(),
+            )
 
         prob_not_infected = torch.exp(-1 * new_transmission)
         probs = torch.hstack((1 - prob_not_infected, prob_not_infected))

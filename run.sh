@@ -2,17 +2,17 @@
 # ---------------------------------------------------------------------------
 # Run the ABM (default: factual run = CF 7, 30 stochastic iterations, county 01031).
 # Settings come from config.yaml: HORIZON_DAYS sets the number of simulated days;
-# beta / initial infected / k are the calibrated values unless BETA (or BETA_DAILY) /
+# R_t / initial infected / k are the calibrated values unless R_T (or R_T_DAILY) /
 # INITIAL_INFECTED / K are set there.
 #
 #   bash run.sh                           # -> results/01031/run/
-#   RUN_NAME=beta_1.2 bash run.sh         # -> results/01031/beta_1.2/  (keep runs side by side)
+#   RUN_NAME=r_t_1.2 bash run.sh          # -> results/01031/r_t_1.2/  (keep runs side by side)
 #   CALIBRATION=path/calibrated_params.txt bash run.sh   # use a specific calibration
 #   CF_TYPES=1,7 CF_ITERS=5 bash run.sh   # other counterfactual types / iterations
 #   OVERWRITE=1 bash run.sh               # replace an existing output folder
 #
 # Output (results/<FIPS>/<RUN_NAME>/):
-#   beta_daily.csv              day, date, phase, beta
+#   r_t_daily.csv               day, date, phase, r_t
 #   seirv_daily.csv             day, date, S, E, I, R, V  (mean over iterations)
 #   cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
 #   cf_raw_7.csv, counterfactual_data7*.csv, counterfactual_results7.png
@@ -28,12 +28,14 @@ CAL_DIR="result_graphs/$FIPS/$($PY - <<'PY'
 import os, yaml
 cfg = yaml.safe_load(open(os.environ["ABM_CONFIG"]))
 md, epi = cfg["simulation_metadata"], cfg["epidemic"]
+mixing, durations = epi.get("MIXING", "network"), epi.get("STAGE_DURATIONS", "fixed")
+variant = "" if (mixing, durations) == ("network", "fixed") else f"_{mixing}_{durations}"
 print(f"{md['DATE']}/{md['INITIAL_INFECTION_RATE']}_{epi['EXPOSED_TO_INFECTED_TIME']}_{epi['INFECTED_TO_RECOVERED_TIME']}"
-      f"_{md['WITH_K']}_{md['WITH_VACC']}_{md['USE_7DAY_AVG']}_metro_0")
+      f"_{md['WITH_K']}_{md['WITH_VACC']}_{md['USE_7DAY_AVG']}_metro_0{variant}")
 PY
 )"
 PARAMS="${CALIBRATION:-$CAL_DIR/calibrated_params.txt}"
-[[ -f "$PARAMS" ]] || echo "[run] no calibration at $PARAMS -- only OK if BETA (or BETA_DAILY), INITIAL_INFECTED and K are all set in config.yaml" \
+[[ -f "$PARAMS" ]] || echo "[run] no calibration at $PARAMS -- only OK if R_T (or R_T_DAILY), INITIAL_INFECTED and K are all set in config.yaml" \
                          "(otherwise run calibrate.sh, or point CALIBRATION= at an existing calibrated_params.txt)"
 OUT="results/$FIPS/${RUN_NAME:-run}"
 

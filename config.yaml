@@ -1,6 +1,6 @@
 # =============================================================================
 # COVID ABM config -- county 01031 (Coffee County, AL), 2020-10-26 .. 2021-04-25
-#   1) bash calibrate.sh   fits weekly beta, initial infected fraction, k to cases
+#   1) bash calibrate.sh   fits weekly R_t, initial infected fraction, k to cases
 #   2) bash run.sh         runs the model (factual, CF 7) -> results/01031/run/
 # Edit the EPIDEMIC PARAMETERS block, then re-run. See README.md.
 # =============================================================================
@@ -15,28 +15,43 @@ epidemic:
   # --- run.sh only ------------------------------------------------------------
   HORIZON_DAYS: 182                  # days simulated after the 14-day burn-in, starting 2020-10-26 (1..182)
 
-  # Transmission rate beta:
-  #   BETA: null           -> the calibrated weekly beta (calibrated_params.txt)
-  #   BETA: 1.2            -> that beta in every week
-  #   BETA: [1.1, 0.9, ...] (26 values) -> one beta per week (week 0 starts 2020-10-26)
-  BETA: null
-  # Daily beta; replaces BETA when set:
-  #   BETA_DAILY: [1.1, 1.08, ...]  -> one value per day from 2020-10-26, at least HORIZON_DAYS values
-  #                                    (the burn-in keeps BETA_BURN_IN)
-  #   BETA_DAILY: my_beta.csv       -> CSV with a `beta` column, read the same way; if it also has a
-  #                                    `day` column (simulation step, burn-in included, e.g. an edited
-  #                                    results/01031/run/beta_daily.csv) rows are placed by day
-  BETA_DAILY: null
+  # Transmission scale R_t (the paper's R_t; called BETA in earlier versions of this config). It
+  # multiplies the per-contact infection hazard on the contact networks, so it is NOT the beta of an
+  # SIR/SEIR model and NOT the effective reproduction number of the simulated epidemic.
+  #   R_T: null            -> the calibrated weekly R_t (calibrated_params.txt)
+  #   R_T: 1.2             -> that R_t in every week
+  #   R_T: [1.1, 0.9, ...] (26 values) -> one R_t per week (week 0 starts 2020-10-26)
+  R_T: null
+  # Daily R_t; replaces R_T when set:
+  #   R_T_DAILY: [1.1, 1.08, ...]   -> one value per day from 2020-10-26, at least HORIZON_DAYS values
+  #                                     (the burn-in keeps R_T_BURN_IN)
+  #   R_T_DAILY: my_r_t.csv         -> CSV with an `r_t` column, read the same way; if it also has a
+  #                                     `day` column (simulation step, burn-in included, e.g. an edited
+  #                                     results/01031/run/r_t_daily.csv) rows are placed by day
+  R_T_DAILY: null
   INITIAL_INFECTED: null             # fraction infected at day 0; null -> calibrated
   K: null                            # reporting fraction (cases = k x new infections); null -> calibrated
-  # With BETA (or BETA_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
+  # With R_T (or R_T_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
 
-  # --- Beta during calibration (calibrate.sh) ---------------------------------
-  # Calibrated as a cubic spline in log beta, one value per week.
-  BETA_MIN: 0.1                      # lower bound
-  BETA_MAX: 5.0                      # upper bound
-  BETA_INIT: 2.5                     # starting value
-  BETA_BURN_IN: 1.0                  # fixed beta during the 14 burn-in days (both scripts)
+  # --- R_t during calibration (calibrate.sh) ----------------------------------
+  # Calibrated as a cubic spline in log R_t, one value per week.
+  R_T_MIN: 0.1                       # lower bound
+  R_T_MAX: 5.0                       # upper bound
+  R_T_INIT: 2.5                      # starting value
+  R_T_BURN_IN: 1.0                   # fixed R_t during the 14 burn-in days (both scripts)
+
+  # --- Model structure ---------------------------------------------------------
+  # MIXING: network     contacts on the county's networks (the calibrated paper model)
+  #         mean_field  everyone mixes evenly: daily force R_t x (# infected) / N on every agent,
+  #                     no networks, closures, age susceptibility or E infectiousness
+  # STAGE_DURATIONS: fixed        E and I last fixed numbers of days
+  #                  exponential  each day E -> I with prob. 1 - exp(-1/EXPOSED_TO_INFECTED_TIME),
+  #                               I -> R with prob. 1 - exp(-1/INFECTED_TO_RECOVERED_TIME)
+  # mean_field + exponential, with waning none or stochastic, is a stochastic SEIRV model whose beta
+  # is R_t; seirv.py runs the same model without agents. Calibrations of a non-default structure are
+  # stored in their own folder (..._metro_0_<MIXING>_<STAGE_DURATIONS>).
+  MIXING: network
+  STAGE_DURATIONS: fixed
 
   # --- Immunity waning: none | fixed | stochastic -----------------------------
   IMMUNITY_WANING_MODE: fixed
@@ -82,6 +97,8 @@ simulation_metadata:
   EXPOSED_VAR: 1
   GENERATING_COUNTERFACTUAL: false
   IMMUNITY_WANING_MODE: ${epidemic.IMMUNITY_WANING_MODE}
+  MIXING: ${epidemic.MIXING}
+  STAGE_DURATIONS: ${epidemic.STAGE_DURATIONS}
   INCLUDE_WEEK_COUNT: true
   INFECTED_TO_RECOVERED_TIME: ${epidemic.INFECTED_TO_RECOVERED_TIME}
   INFECTED_VAR: 2

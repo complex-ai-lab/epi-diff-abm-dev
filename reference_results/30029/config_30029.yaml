@@ -1,7 +1,7 @@
 # =============================================================================
 # COVID ABM config -- county 30029 (Flathead County, MT), 2020-10-26 .. 2021-04-25
 # Config of the stored P0 factual run (CF 7) behind reference_results/30029/ (from preetom-dev).
-# BETA, INITIAL_INFECTED and K are that run's calibrated values. This branch only has data and
+# R_T, INITIAL_INFECTED and K are that run's calibrated values. This branch only has data and
 # networks for 01031, so running this county needs populations/pop30029, its case data and networks.
 # =============================================================================
 
@@ -15,28 +15,30 @@ epidemic:
   # --- run.sh only ------------------------------------------------------------
   HORIZON_DAYS: 182                  # days simulated after the 14-day burn-in, starting 2020-10-26 (1..182)
 
-  # Transmission rate beta:
-  #   BETA: null           -> the calibrated weekly beta (calibrated_params.txt)
-  #   BETA: 1.2            -> that beta in every week
-  #   BETA: [1.1, 0.9, ...] (26 values) -> one beta per week (week 0 starts 2020-10-26)
-  BETA: [0.832219, 0.781748, 0.830217, 0.897798, 0.850389, 0.838391, 0.871359, 0.810523, 0.781949, 0.951761, 1.227244, 1.245329, 1.006417, 0.793766, 0.677805, 0.636448, 0.684466, 0.768626, 0.726250, 0.525270, 0.354777, 0.314479, 0.412561, 0.650998, 0.945821, 1.230771]   # calibrated, weeks 0..25
-  # Daily beta; replaces BETA when set:
-  #   BETA_DAILY: [1.1, 1.08, ...]  -> one value per day from 2020-10-26, at least HORIZON_DAYS values
-  #                                    (the burn-in keeps BETA_BURN_IN)
-  #   BETA_DAILY: my_beta.csv       -> CSV with a `beta` column, read the same way; if it also has a
-  #                                    `day` column (simulation step, burn-in included, e.g. an edited
-  #                                    results/30029/run/beta_daily.csv) rows are placed by day
-  BETA_DAILY: null
+  # Transmission scale R_t (the paper's R_t; called BETA in earlier versions of this config). It
+  # multiplies the per-contact infection hazard on the contact networks, so it is NOT the beta of an
+  # SIR/SEIR model and NOT the effective reproduction number of the simulated epidemic.
+  #   R_T: null            -> the calibrated weekly R_t (calibrated_params.txt)
+  #   R_T: 1.2             -> that R_t in every week
+  #   R_T: [1.1, 0.9, ...] (26 values) -> one R_t per week (week 0 starts 2020-10-26)
+  R_T: [0.832219, 0.781748, 0.830217, 0.897798, 0.850389, 0.838391, 0.871359, 0.810523, 0.781949, 0.951761, 1.227244, 1.245329, 1.006417, 0.793766, 0.677805, 0.636448, 0.684466, 0.768626, 0.726250, 0.525270, 0.354777, 0.314479, 0.412561, 0.650998, 0.945821, 1.230771]   # calibrated, weeks 0..25
+  # Daily R_t; replaces R_T when set:
+  #   R_T_DAILY: [1.1, 1.08, ...]   -> one value per day from 2020-10-26, at least HORIZON_DAYS values
+  #                                     (the burn-in keeps R_T_BURN_IN)
+  #   R_T_DAILY: my_r_t.csv         -> CSV with an `r_t` column, read the same way; if it also has a
+  #                                     `day` column (simulation step, burn-in included, e.g. an edited
+  #                                     results/30029/run/r_t_daily.csv) rows are placed by day
+  R_T_DAILY: null
   INITIAL_INFECTED: 0.008964             # fraction infected at day 0 (calibrated)
   K: 0.205413                            # reporting fraction (cases = k x new infections) (calibrated)
-  # With BETA (or BETA_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
+  # With R_T (or R_T_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
 
-  # --- Beta during calibration (calibrate.sh) ---------------------------------
-  # Calibrated as a cubic spline in log beta, one value per week.
-  BETA_MIN: 0.1                      # lower bound
-  BETA_MAX: 5.0                      # upper bound
-  BETA_INIT: 2.5                     # starting value
-  BETA_BURN_IN: 1.0                  # fixed beta during the 14 burn-in days (both scripts)
+  # --- R_t during calibration (calibrate.sh) ----------------------------------
+  # Calibrated as a cubic spline in log R_t, one value per week.
+  R_T_MIN: 0.1                       # lower bound
+  R_T_MAX: 5.0                       # upper bound
+  R_T_INIT: 2.5                      # starting value
+  R_T_BURN_IN: 1.0                   # fixed R_t during the 14 burn-in days (both scripts)
 
   # --- Immunity waning: none | fixed | stochastic -----------------------------
   IMMUNITY_WANING_MODE: fixed

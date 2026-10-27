@@ -19,48 +19,62 @@ CONFIG_PATH = os.path.abspath(os.environ.get("ABM_CONFIG") or os.path.join(
 os.environ["ABM_CONFIG"] = CONFIG_PATH
 
 
-def beta_daily_spec(beta_daily):
-    """BETA_DAILY from config.yaml -> {"start_day", "values"} for transition.py.
-      list              one beta per day starting on the first observed day (2020-10-26)
-      path to a .csv    column `beta`; if it also has a `day` column (simulation step, as in
-                        run.sh's beta_daily.csv) rows are placed by day, burn-in included
+def r_t_daily_spec(r_t_daily):
+    """R_T_DAILY from config.yaml -> {"start_day", "values"} for transition.py.
+      list              one R_t per day starting on the first observed day (2020-10-26)
+      path to a .csv    column `r_t`; if it also has a `day` column (simulation step, as in
+                        run.sh's r_t_daily.csv) rows are placed by day, burn-in included
     Relative paths are relative to the repo root."""
-    if beta_daily is None:
+    if r_t_daily is None:
         return None
     burn_in = int(yaml.safe_load(open(CONFIG_PATH))["simulation_metadata"].get("BURN_IN_DAYS", 0) or 0)
-    if isinstance(beta_daily, str):
+    if isinstance(r_t_daily, str):
         import pandas as pd
-        path = beta_daily if os.path.isabs(beta_daily) else os.path.join(os.path.dirname(os.path.abspath(__file__)), beta_daily)
+        path = r_t_daily if os.path.isabs(r_t_daily) else os.path.join(os.path.dirname(os.path.abspath(__file__)), r_t_daily)
         df = pd.read_csv(path)
+        if "r_t" not in df.columns:
+            raise ValueError(f"R_T_DAILY csv {path}: needs an `r_t` column"
+                             + (" (rename the old `beta` column)" if "beta" in df.columns else ""))
         if "day" in df.columns:
             df = df.sort_values("day")
             days = df["day"].astype(int).tolist()
             if days != list(range(days[0], days[0] + len(days))):
-                raise ValueError(f"BETA_DAILY csv {path}: `day` must be consecutive")
-            return {"start_day": days[0], "values": df["beta"].astype(float).tolist()}
-        return {"start_day": burn_in, "values": df["beta"].astype(float).tolist()}
-    return {"start_day": burn_in, "values": [float(v) for v in beta_daily]}
+                raise ValueError(f"R_T_DAILY csv {path}: `day` must be consecutive")
+            return {"start_day": days[0], "values": df["r_t"].astype(float).tolist()}
+        return {"start_day": burn_in, "values": df["r_t"].astype(float).tolist()}
+    return {"start_day": burn_in, "values": [float(v) for v in r_t_daily]}
+
+
+def model_variant(epi):
+    """Suffix of the calibration folder for a non-default model structure ('' for the paper model)."""
+    mixing, durations = epi.get("MIXING", "network"), epi.get("STAGE_DURATIONS", "fixed")
+    return "" if (mixing, durations) == ("network", "fixed") else f"_{mixing}_{durations}"
 
 
 def export_run_settings(config_path=CONFIG_PATH):
-    """Export config.yaml's `run_settings` and the beta keys of `epidemic` as the
+    """Export config.yaml's `run_settings` and the R_t keys of `epidemic` as the
     environment variables abm_nets.py / transition.py read. Variables already set
     in the shell win, so e.g. `CF_TYPES=7 bash run.sh` still works."""
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
     epi = cfg.get("epidemic", {})
+    old = sorted(k for k in epi if k == "BETA" or k.startswith("BETA_"))
+    if old:
+        raise ValueError(f"{config_path}: {old} were renamed to R_T / R_T_DAILY / R_T_MIN / R_T_MAX / "
+                         f"R_T_INIT / R_T_BURN_IN; rename them in the epidemic block")
     env = dict(cfg.get("run_settings") or {})
     env.update({
-        "R_SPLINE_R_MIN": epi["BETA_MIN"],
-        "R_MAX": epi["BETA_MAX"],
-        "R_SPLINE_INIT_R": epi["BETA_INIT"],
-        "BURN_IN_R": epi["BETA_BURN_IN"],
+        "R_SPLINE_R_MIN": epi["R_T_MIN"],
+        "R_MAX": epi["R_T_MAX"],
+        "R_SPLINE_INIT_R": epi["R_T_INIT"],
+        "BURN_IN_R": epi["R_T_BURN_IN"],
         # run.sh only: fixed values instead of the calibrated ones (null = calibrated)
-        "BETA_OVERRIDE": json.dumps(epi.get("BETA")),
+        "R_T_OVERRIDE": json.dumps(epi.get("R_T")),
         "I0_OVERRIDE": json.dumps(epi.get("INITIAL_INFECTED")),
         "K_OVERRIDE": json.dumps(epi.get("K")),
-        "BETA_DAILY_OVERRIDE": json.dumps(beta_daily_spec(epi.get("BETA_DAILY"))),
+        "R_T_DAILY_OVERRIDE": json.dumps(r_t_daily_spec(epi.get("R_T_DAILY"))),
         "HORIZON_DAYS": epi.get("HORIZON_DAYS") or "",
+        "MODEL_VARIANT": model_variant(epi),
     })
     for key, value in env.items():
         os.environ.setdefault(key, str(value))

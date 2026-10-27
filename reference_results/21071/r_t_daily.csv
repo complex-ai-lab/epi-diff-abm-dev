@@ -1,4 +1,4 @@
-day,date,phase,beta
+day,date,phase,r_t
 0,2020-10-12,burn_in,1.0
 1,2020-10-13,burn_in,1.0
 2,2020-10-14,burn_in,1.0

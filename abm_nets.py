@@ -19,6 +19,9 @@ from covid_abm.spline_basis import (
 # Human-readable name of each counterfactual policy, keyed by COUNTERFACTUAL_TYPE.
 # "factual" = the county's real school/occ intervention series; "flipped" = 1 -
 # factual. Used in plot titles and the counterfactual_policies.txt reference.
+# Calibration-folder suffix for a non-default MIXING / STAGE_DURATIONS (set by main.py).
+MODEL_VARIANT = os.environ.get("MODEL_VARIANT", "")
+
 CF_POLICY_DESC = {
     1:  "all-open (school open, work open)",
     2:  "school-closed, work-open",
@@ -87,9 +90,9 @@ CF_FOLDER_MAP = {
 }
 
 
-def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, beta_history):
+def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, r_t_history):
     """After the factual run (CF 7), write three summary CSVs to output_dir:
-      beta_daily.csv              day, date, phase, beta   (the beta the simulator used each day)
+      r_t_daily.csv               day, date, phase, r_t    (the R_t the simulator used each day)
       seirv_daily.csv             day, date, S, E, I, R, V   (mean agent counts over CF iterations)
       cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
     `day` is the simulation step t (burn-in included); `date` comes from intervention.csv.
@@ -104,11 +107,11 @@ def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, beta_histo
     days = np.arange(num_steps)
     phase = np.where(days < burn_in, 'burn_in', 'observed')
 
-    # 1) beta per day, as recorded by the simulator (weekly / burn-in / BETA / BETA_DAILY)
-    beta = pd.DataFrame(beta_history, columns=['day', 'beta']).drop_duplicates('day').set_index('day')['beta']
+    # 1) R_t per day, as recorded by the simulator (weekly / burn-in / R_T / R_T_DAILY)
+    r_t = pd.DataFrame(r_t_history, columns=['day', 'r_t']).drop_duplicates('day').set_index('day')['r_t']
     pd.DataFrame({'day': days, 'date': dates.reindex(days).values, 'phase': phase,
-                  'beta': beta.reindex(days).values}).to_csv(
-        os.path.join(output_dir, 'beta_daily.csv'), index=False)
+                  'r_t': r_t.reindex(days).values}).to_csv(
+        os.path.join(output_dir, 'r_t_daily.csv'), index=False)
 
     # 2) S, E, I, R, V counts per day (mean over iterations of the stage fractions x N)
     props = pd.read_csv(os.path.join(output_dir, 'counterfactual_data7_proportions.csv'))
@@ -132,7 +135,7 @@ def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, beta_histo
         'simulated_cases': sims.mean(axis=0), 'simulated_cases_sd': sims.std(axis=0),
         'observed_cases': observed,
     }).to_csv(os.path.join(output_dir, 'cases_sim_vs_observed.csv'), index=False)
-    print(f"[INFO] wrote beta_daily.csv, seirv_daily.csv, cases_sim_vs_observed.csv "
+    print(f"[INFO] wrote r_t_daily.csv, seirv_daily.csv, cases_sim_vs_observed.csv "
           f"({len(full_cases)} iterations, {num_steps - burn_in} days after burn-in) to {output_dir}", flush=True)
 
 
@@ -383,7 +386,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
         # result_graphs/... so an existing calibration/CF result is never
         # overwritten. Unset -> original behaviour.
         cf_out = os.environ.get("CF_OUTPUT_DIR")
-        output_dir = cf_out or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
+        output_dir = cf_out or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}'
         os.makedirs(output_dir, exist_ok=True)
 
         cf_folder_name = CF_FOLDER_MAP.get(cf_type, f"type_{cf_type}")
@@ -456,8 +459,8 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
         plt.legend()
         
         metro_phase = sim.config['simulation_metadata'].get('metro_calibration_phase', 0)
-        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}', exist_ok=True)
-        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}/simulation_results.png')
+        os.makedirs(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}/{epoch}', exist_ok=True)
+        plt.savefig(f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}/{epoch}/simulation_results.png')
         plt.close()
 
         trans_substep = runner.initializer.transition_function['0'].new_transmission
@@ -474,7 +477,7 @@ def execute(sim, runner, Y_actual, epoch, epochs, n_steps=28, loss_cutoff_step=N
                 plt.grid(True)
                 plt.legend()
                 plt.tight_layout()
-                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}/{epoch}/{stage}_proportion.png")
+                plt.savefig(f"result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}/{epoch}/{stage}_proportion.png")
                 plt.close()
 
     if epoch == epochs - 1:
@@ -708,16 +711,16 @@ def eval_net(sim, runner):
         cf_folder_map = CF_FOLDER_MAP
 
         param_load_phase = 0 if metro_phase == 0 else 2
-        base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
+        base_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}{MODEL_VARIANT}'
         # CF_PARAM_FILE lets a CF run use a specific frozen calibration
         # (e.g. a waning-mode fit) without staging it into result_graphs/...
         param_file = os.environ.get("CF_PARAM_FILE") or os.path.join(base_dir, "calibrated_params.txt")
 
-        # BETA / INITIAL_INFECTED / K in config.yaml (exported by main.py as
-        # BETA_OVERRIDE / I0_OVERRIDE / K_OVERRIDE, JSON) replace the calibrated
+        # R_T / INITIAL_INFECTED / K in config.yaml (exported by main.py as
+        # R_T_OVERRIDE / I0_OVERRIDE / K_OVERRIDE, JSON) replace the calibrated
         # values. With all three set, no calibration is needed.
         overrides = {name: json.loads(os.environ[name])
-                     for name in ("BETA_OVERRIDE", "I0_OVERRIDE", "K_OVERRIDE")
+                     for name in ("R_T_OVERRIDE", "I0_OVERRIDE", "K_OVERRIDE")
                      if os.environ.get(name, "").strip() not in ("", "null", "None")}
 
         if os.path.exists(param_file):
@@ -727,29 +730,29 @@ def eval_net(sim, runner):
                 print(f"\n[ERROR] Failed to load calibrated parameters from '{param_file}': {e}\n")
                 sys.exit(1)
         elif ("I0_OVERRIDE" in overrides and "K_OVERRIDE" in overrides and
-              ("BETA_OVERRIDE" in overrides or
-               os.environ.get("BETA_DAILY_OVERRIDE", "").strip() not in ("", "null", "None"))):
-            param_array = np.zeros(num_weeks + 2)  # weekly beta unused: BETA_DAILY replaces it
+              ("R_T_OVERRIDE" in overrides or
+               os.environ.get("R_T_DAILY_OVERRIDE", "").strip() not in ("", "null", "None"))):
+            param_array = np.zeros(num_weeks + 2)  # weekly R_t unused: R_T_DAILY replaces it
         else:
             print(f"\n[ERROR] Calibrated parameter file not found at: '{param_file}'")
-            print(f"[ERROR] Run calibrate.sh first, or set BETA (or BETA_DAILY), INITIAL_INFECTED and K in config.yaml.\n")
+            print(f"[ERROR] Run calibrate.sh first, or set R_T (or R_T_DAILY), INITIAL_INFECTED and K in config.yaml.\n")
             sys.exit(1)
 
         param_array = np.asarray(param_array, dtype=float).ravel()
-        if "BETA_OVERRIDE" in overrides:
-            beta = np.atleast_1d(np.asarray(overrides["BETA_OVERRIDE"], dtype=float))
-            if beta.size == 1:
-                beta = np.repeat(beta, num_weeks)
-            if beta.size != num_weeks:
-                raise ValueError(f"BETA must be one number or a list of {num_weeks} weekly values, got {beta.size}")
-            param_array[:num_weeks] = beta
+        if "R_T_OVERRIDE" in overrides:
+            r_t = np.atleast_1d(np.asarray(overrides["R_T_OVERRIDE"], dtype=float))
+            if r_t.size == 1:
+                r_t = np.repeat(r_t, num_weeks)
+            if r_t.size != num_weeks:
+                raise ValueError(f"R_T must be one number or a list of {num_weeks} weekly values, got {r_t.size}")
+            param_array[:num_weeks] = r_t
         if "I0_OVERRIDE" in overrides:
             param_array[-2] = float(overrides["I0_OVERRIDE"])
         if "K_OVERRIDE" in overrides:
             param_array[-1] = float(overrides["K_OVERRIDE"])
         if overrides:
             print(f"[INFO] parameter overrides from config: {sorted(overrides)}; "
-                  f"beta mean {param_array[:num_weeks].mean():.4f}, "
+                  f"R_t mean {param_array[:num_weeks].mean():.4f}, "
                   f"initial infected {param_array[-2]:.6f}, k {param_array[-1]:.4f}", flush=True)
 
         param_tensor = torch.tensor(param_array, dtype=torch.float, device=DEVICE)
@@ -803,7 +806,7 @@ def eval_net(sim, runner):
                 all_full_cases.append(runner.state_trajectory[-1][-1]['environment']['daily_infected'].detach().cpu().numpy())
 
                 substep = runner.initializer.transition_function['0'].new_transmission
-                output_dir = os.environ.get("CF_OUTPUT_DIR") or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}'
+                output_dir = os.environ.get("CF_OUTPUT_DIR") or f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{param_load_phase}{MODEL_VARIANT}'
                 os.makedirs(output_dir, exist_ok=True)
                 path = f'{output_dir}/counterfactual_data{cf_type}_proportions.csv'
 
@@ -879,7 +882,7 @@ def eval_net(sim, runner):
                 einc_df.to_csv(f'{output_dir}/counterfactual_data{cf_type}_essential_incidence.csv', index=False)
 
             if cf_type == 7:
-                write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.beta_history)
+                write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.r_t_history)
 
         return
 
@@ -1033,7 +1036,7 @@ def eval_net(sim, runner):
 
         if epoch == epochs - 1:
             substep = runner.initializer.transition_function['0'].new_transmission
-            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
+            output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}'
             os.makedirs(output_dir, exist_ok=True)  # not yet created when EPOCHS <= curriculum length
             path = f'{output_dir}/training_proportions.csv'
             substep.save_proportions_to_disk(path)
@@ -1104,7 +1107,7 @@ def eval_net(sim, runner):
     iters = np.arange(1, epochs + 1)
     data = np.column_stack((iters, loss_array))
 
-    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}'
+    output_dir = f'result_graphs/{population}/{date}/{initial_rate}_{exposed_to_infected}_{infected_to_recovered}_{with_k}_{with_vacc}_{use_7day_avg}_metro_{metro_phase}{MODEL_VARIANT}'
     with open(os.path.join(output_dir, "training_loss.csv"), mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(['Iteration', 'Task Loss'])

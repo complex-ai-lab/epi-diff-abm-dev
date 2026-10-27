@@ -9,7 +9,7 @@
 #   CONFIG=my_config.yaml bash calibrate.sh
 #
 # Output: result_graphs/<FIPS>/<DATE>/<INITIAL_INFECTION_RATE>_<E->I>_<I->R>_True_True_False_metro_0/
-#   calibrated_params.txt  26 weekly beta, initial infected fraction, k   (used by run.sh)
+#   calibrated_params.txt  26 weekly R_t, initial infected fraction, k   (used by run.sh)
 #   r_daily.txt, spline_coef.txt, spline_meta.json, training_loss.csv, per-epoch plots
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -22,8 +22,10 @@ OUT="result_graphs/$FIPS/$($PY - <<'PY'
 import os, yaml
 cfg = yaml.safe_load(open(os.environ["ABM_CONFIG"]))
 md, epi = cfg["simulation_metadata"], cfg["epidemic"]
+mixing, durations = epi.get("MIXING", "network"), epi.get("STAGE_DURATIONS", "fixed")
+variant = "" if (mixing, durations) == ("network", "fixed") else f"_{mixing}_{durations}"
 print(f"{md['DATE']}/{md['INITIAL_INFECTION_RATE']}_{epi['EXPOSED_TO_INFECTED_TIME']}_{epi['INFECTED_TO_RECOVERED_TIME']}"
-      f"_{md['WITH_K']}_{md['WITH_VACC']}_{md['USE_7DAY_AVG']}_metro_0")
+      f"_{md['WITH_K']}_{md['WITH_VACC']}_{md['USE_7DAY_AVG']}_metro_0{variant}")
 PY
 )"
 
