@@ -90,11 +90,13 @@ CF_FOLDER_MAP = {
 }
 
 
-def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, r_t_history):
-    """After the factual run (CF 7), write three summary CSVs to output_dir:
+def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, r_t_history, k):
+    """After the factual run (CF 7), write four summary CSVs to output_dir:
       r_t_daily.csv               day, date, phase, r_t    (the R_t the simulator used each day)
       seirv_daily.csv             day, date, S, E, I, R, V   (mean agent counts over CF iterations)
       cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
+      seir_rates_daily.csv        day, date, phase, r_t, beta, sigma, gamma, sigma_eff, gamma_eff, R_eff,
+                                  doses, new_E, k   (SEIRV rates of the run, seirv_fit.infer_rates)
     `day` is the simulation step t (burn-in included); `date` comes from intervention.csv.
     full_cases: one array per iteration of daily reported cases over all simulated days."""
     md = sim.config['simulation_metadata']
@@ -135,7 +137,13 @@ def write_factual_run_csvs(sim, output_dir, case_numbers, full_cases, r_t_histor
         'simulated_cases': sims.mean(axis=0), 'simulated_cases_sd': sims.std(axis=0),
         'observed_cases': observed,
     }).to_csv(os.path.join(output_dir, 'cases_sim_vs_observed.csv'), index=False)
-    print(f"[INFO] wrote r_t_daily.csv, seirv_daily.csv, cases_sim_vs_observed.csv "
+
+    # 4) SEIRV-equivalent beta, sigma, gamma per day (README section 10)
+    from seirv_fit import infer_rates
+    rates = infer_rates(seirv, pd.read_csv(os.path.join(output_dir, 'cases_sim_vs_observed.csv')),
+                        pd.read_csv(os.path.join(output_dir, 'r_t_daily.csv')), k, md)
+    rates.to_csv(os.path.join(output_dir, 'seir_rates_daily.csv'), index=False)
+    print(f"[INFO] wrote r_t_daily.csv, seirv_daily.csv, cases_sim_vs_observed.csv, seir_rates_daily.csv "
           f"({len(full_cases)} iterations, {num_steps - burn_in} days after burn-in) to {output_dir}", flush=True)
 
 
@@ -882,7 +890,8 @@ def eval_net(sim, runner):
                 einc_df.to_csv(f'{output_dir}/counterfactual_data{cf_type}_essential_incidence.csv', index=False)
 
             if cf_type == 7:
-                write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.r_t_history)
+                write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.r_t_history,
+                                       float(param_array[-1]))
 
         return
 

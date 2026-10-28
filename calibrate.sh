@@ -5,6 +5,7 @@
 #
 #   bash calibrate.sh                     # ~27 min on one A100
 #   OVERWRITE=1 bash calibrate.sh         # replace an existing calibration
+#   SKIP_EXISTING=1 bash calibrate.sh     # exit 0 (instead of 1) if the calibration exists
 #   EPOCHS=2 bash calibrate.sh            # smoke test (any run_settings key can be overridden like this)
 #   CONFIG=my_config.yaml bash calibrate.sh
 #
@@ -30,6 +31,7 @@ PY
 )"
 
 if [[ -f "$OUT/calibrated_params.txt" && "${OVERWRITE:-0}" != "1" ]]; then
+    [[ "${SKIP_EXISTING:-0}" == "1" ]] && { echo "[calibrate] $OUT/calibrated_params.txt exists; skipped"; exit 0; }
     echo "[calibrate] $OUT/calibrated_params.txt exists; set OVERWRITE=1 to redo"; exit 1
 fi
 rm -rf "$OUT"

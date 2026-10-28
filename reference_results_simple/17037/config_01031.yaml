@@ -1,0 +1,584 @@
+# =============================================================================
+# COVID ABM config -- county 01031 (Coffee County, AL), 2020-10-26 .. 2021-04-25
+# SIMPLE variant of config.yaml: no immunity waning (IMMUNITY_WANING_MODE: none) and no vaccination
+# (WITH_VACC: false); everything else as config.yaml. Use with CONFIG=config_simple.yaml.
+# Config of the factual run (CF 7) behind reference_results_simple/17037/ (run.sh output results/17037/simple).
+# R_T, INITIAL_INFECTED and K are the values that run used. Rerun with
+#   CONFIG=reference_results_simple/17037/config_01031.yaml RUN_NAME=ref bash run.sh
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# EPIDEMIC PARAMETERS (edit these)
+# -----------------------------------------------------------------------------
+epidemic:
+  EXPOSED_TO_INFECTED_TIME: 3        # E -> I, days
+  INFECTED_TO_RECOVERED_TIME: 5      # I -> R, days
+
+  # --- run.sh only ------------------------------------------------------------
+  HORIZON_DAYS: 182                  # days simulated after the 14-day burn-in, starting 2020-10-26 (1..182)
+
+  # Transmission scale R_t (the paper's R_t; called BETA in earlier versions of this config). It
+  # multiplies the per-contact infection hazard on the contact networks, so it is NOT the beta of an
+  # SIR/SEIR model and NOT the effective reproduction number of the simulated epidemic.
+  #   R_T: null            -> the calibrated weekly R_t (calibrated_params.txt)
+  #   R_T: 1.2             -> that R_t in every week
+  #   R_T: [1.1, 0.9, ...] (26 values) -> one R_t per week (week 0 starts 2020-10-26)
+  R_T: [1.519113, 1.035690, 0.841972, 0.660403, 0.485925, 0.709299, 1.056145, 0.987822, 0.803029, 0.822682, 0.980785, 1.069886, 1.029647, 0.930807, 0.821434, 0.750544, 0.845737, 1.123799, 1.392424, 1.429186, 1.335654, 1.359101, 1.735940, 2.675992, 3.391598, 3.332421]   # calibrated, weeks 0..25
+  # Daily R_t; replaces R_T when set:
+  #   R_T_DAILY: [1.1, 1.08, ...]   -> one value per day from 2020-10-26, at least HORIZON_DAYS values
+  #                                     (the burn-in keeps R_T_BURN_IN)
+  #   R_T_DAILY: my_r_t.csv         -> CSV with an `r_t` column, read the same way; if it also has a
+  #                                     `day` column (simulation step, burn-in included, e.g. an edited
+  #                                     results/01031/run/r_t_daily.csv) rows are placed by day
+  R_T_DAILY: null
+  INITIAL_INFECTED: 0.004102             # fraction infected at day 0 (calibrated)
+  K: 0.215638                            # reporting fraction (cases = k x new infections) (calibrated)
+  # With R_T (or R_T_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
+
+  # --- R_t during calibration (calibrate.sh) ----------------------------------
+  # Calibrated as a cubic spline in log R_t, one value per week.
+  R_T_MIN: 0.1                       # lower bound
+  R_T_MAX: 5.0                       # upper bound
+  R_T_INIT: 2.5                      # starting value
+  R_T_BURN_IN: 1.0                   # fixed R_t during the 14 burn-in days (both scripts)
+
+  # --- Model structure ---------------------------------------------------------
+  # MIXING: network     contacts on the county's networks (the calibrated paper model)
+  #         mean_field  everyone mixes evenly: daily force R_t x (# infected) / N on every agent,
+  #                     no networks, closures, age susceptibility or E infectiousness
+  # STAGE_DURATIONS: fixed        E and I last fixed numbers of days
+  #                  exponential  each day E -> I with prob. 1 - exp(-1/EXPOSED_TO_INFECTED_TIME),
+  #                               I -> R with prob. 1 - exp(-1/INFECTED_TO_RECOVERED_TIME)
+  # mean_field + exponential, with waning none or stochastic, is a stochastic SEIRV model whose beta
+  # is R_t; seirv.py runs the same model without agents. Calibrations of a non-default structure are
+  # stored in their own folder (..._metro_0_<MIXING>_<STAGE_DURATIONS>).
+  MIXING: network
+  STAGE_DURATIONS: fixed
+
+  # --- Immunity waning: none | fixed | stochastic -----------------------------
+  IMMUNITY_WANING_MODE: none
+  RECOVERED_TO_SUSCEPTIBLE_TIME: 60  # R -> S, days (fixed mode)
+  VACCINATED_TO_SUSCEPTIBLE_TIME: 90 # V -> S, days (fixed mode)
+  RECOVERED_WANING_RATE: 0.01        # R -> S daily rate (stochastic mode)
+  VACCINATED_WANING_RATE: 0.00667    # V -> S daily rate (stochastic mode)
+
+# -----------------------------------------------------------------------------
+# RUN SETTINGS: exported as environment variables by main.py, with the same
+# names as in run_p0_county.sh (the P0 / cft_poisson_lam25 recipe). A variable
+# already set in the shell takes precedence, e.g. `EPOCHS=2 bash calibrate.sh`.
+# -----------------------------------------------------------------------------
+run_settings:
+  NETWORKS_DIR: data/networks/covid_output_p0   # relative to the repo root
+  SEED: 42
+  LAYER_WEIGHTS: "2.25,2,2,1"        # household, school, occupation, community
+  FIX_AGE_SPLIT: 1
+  I0_MAX: 0.01                       # upper bound on the initial infected fraction
+  REPORT_LAG: 0
+  LOSS_MODE: poisson                 # sse | log1p | poisson
+  # calibration
+  EPOCHS: 251
+  R_SPLINE: 1
+  R_SPLINE_J: 26
+  R_SPLINE_DEGREE: 3
+  R_SPLINE_LAMBDA: 25
+  R_SPLINE_ENDPOINT_LAMBDA: 25
+  R_SMOOTH_LAMBDA: 0
+  PARAM_SNAPSHOT_K: 20
+  # counterfactuals (run.sh); CF 7 = factual
+  CF_TYPES: "7"                      # all used in the paper: "1,2,3,4,5,6,7,8,9,10,11,29"
+  CF_ITERS: 30
+  LAYER_ATTRIBUTION: 1
+
+simulation_metadata:
+  ALIGN_LLM: true
+  BURN_IN_DAYS: 14
+  COUNTERFACTUAL_TYPE: 7
+  DATE: 202010-202104
+  EXECUTION_MODE: heuristic
+  EXPOSED_TO_INFECTED_TIME: ${epidemic.EXPOSED_TO_INFECTED_TIME}
+  EXPOSED_VAR: 1
+  GENERATING_COUNTERFACTUAL: false
+  IMMUNITY_WANING_MODE: ${epidemic.IMMUNITY_WANING_MODE}
+  MIXING: ${epidemic.MIXING}
+  STAGE_DURATIONS: ${epidemic.STAGE_DURATIONS}
+  INCLUDE_WEEK_COUNT: true
+  INFECTED_TO_RECOVERED_TIME: ${epidemic.INFECTED_TO_RECOVERED_TIME}
+  INFECTED_VAR: 2
+  INFINITY_TIME: 130
+  INITIAL_INFECTION_RATE: 0.0005
+  MORTALITY_VAR: 4
+  NEIGHBORHOOD: Astoria
+  NUM_WEEKS: 26
+  NUM_WEEKS_TO_EVAL: 24
+  OPENAI_API_KEY: None
+  POLICY: weak
+  POPULATION: '01031'
+  RECOVERED_TO_SUSCEPTIBLE_TIME: ${epidemic.RECOVERED_TO_SUSCEPTIBLE_TIME}
+  RECOVERED_VAR: 3
+  RECOVERED_WANING_RATE: ${epidemic.RECOVERED_WANING_RATE}
+  RESCALE_CONFIG: 0
+  R_0_VALUE: 2.4
+  START_WEEK: 202048
+  SUSCEPTIBLE_VAR: 0
+  USE_7DAY_AVG: false
+  USE_GROUND_TRUTH_4WK_AVG: false
+  USE_GROUND_TRUTH_CASE_NUMBERS: false
+  USE_PICKLE: false
+  VACCINATED_TO_SUSCEPTIBLE_TIME: ${epidemic.VACCINATED_TO_SUSCEPTIBLE_TIME}
+  VACCINATED_VAR: 5
+  VACCINATED_WANING_RATE: ${epidemic.VACCINATED_WANING_RATE}
+  WANING_RATE: ${epidemic.RECOVERED_WANING_RATE}
+  WITH_K: true
+  WITH_VACC: false                   # no S -> V (config.yaml: true)
+  age_group_file: ${simulation_metadata.population_dir}/age.pickle
+  calibration: true
+  device: cuda
+  disease_stage_file: ${simulation_metadata.population_dir}/disease_stages.csv
+  infection_network_file: ${simulation_metadata.population_dir}/mobility_networks/0.csv
+  initial_infection_ratio: 0.04
+  learning_params:
+    betas:
+    - 0.5
+    - 0.5
+    lr: 5e-3
+    lr_gamma: 0.9999
+    model_path: saved_model.pth
+  mapping_path: ${simulation_metadata.population_dir}/population_mapping.json
+  metro_calibration_phase: 0
+  num_agents: 48113                  # set at run time from populations/pop<FIPS>
+  num_episodes: 5
+  num_steps_per_episode: 196         # 14 burn-in days + 182 observed-window days
+  num_substeps_per_step: 1
+  population_dir: populations/pop01031  # set at run time from populations/pop<FIPS>
+  quarantine_days: 12
+  test_ineligible_days: 2
+  test_result_delay_days: 3
+state:
+  agents:
+    citizens:
+      number: ${simulation_metadata.num_agents}
+      properties:
+        age:
+          dtype: int
+          initialization_function:
+            arguments:
+              attribute:
+                initialization_function: null
+                learnable: false
+                name: Age
+                shape: null
+                value: age
+              file_path:
+                initialization_function: null
+                learnable: false
+                name: Filepath for age group stage
+                shape:
+                - 1
+                value: ${simulation_metadata.age_group_file}
+            generator: load_population_attribute
+          learnable: false
+          name: Age
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+        awaiting_test_result:
+          dtype: bool
+          initialization_function: null
+          learnable: false
+          name: agent is awaiting test result currently
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: false
+        disease_stage:
+          dtype: int
+          initialization_function:
+            arguments:
+              file_path:
+                initialization_function: null
+                learnable: false
+                name: Disease Stage File
+                shape:
+                - 1
+                value: ${simulation_metadata.disease_stage_file}
+            generator: read_from_file
+          learnable: false
+          name: Disease Stage
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+        id:
+          dtype: float
+          initialization_function:
+            arguments:
+              pop_size:
+                initialization_function: null
+                learnable: false
+                name: population size
+                shape:
+                - 1
+                value: ${simulation_metadata.num_agents}
+            generator: initialize_id
+          learnable: false
+          name: id
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+        infected_time:
+          dtype: int
+          initialization_function:
+            arguments:
+              file_path:
+                initialization_function: null
+                learnable: false
+                name: Filepath for initial disease stages
+                shape: null
+                value: ${simulation_metadata.disease_stage_file}
+              num_steps:
+                initialization_function: null
+                learnable: false
+                name: Num steps per episode
+                shape:
+                - 1
+                value: ${simulation_metadata.num_steps_per_episode}
+            generator: get_infected_time
+          learnable: false
+          name: Last Infected timestep
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+        is_quarantined:
+          dtype: bool
+          initialization_function: null
+          learnable: false
+          name: Quarantine status for a citizen
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: false
+        next_stage_time:
+          dtype: int
+          initialization_function:
+            arguments:
+              file_path:
+                initialization_function: null
+                learnable: false
+                name: Filepath for initial disease stages
+                shape: null
+                value: ${simulation_metadata.disease_stage_file}
+              num_steps:
+                initialization_function: null
+                learnable: false
+                name: Num steps per episode
+                shape:
+                - 1
+                value: ${simulation_metadata.num_steps_per_episode}
+            generator: get_next_stage_time
+          learnable: false
+          name: Timestep for next transition
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: 0
+        quarantine_start_date:
+          dtype: int
+          initialization_function: null
+          learnable: false
+          name: Start date for last quarantine of agent
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: ${simulation_metadata.INFINITY_TIME}
+        test_re_eligble_date:
+          dtype: int
+          initialization_function: null
+          learnable: false
+          name: Date when agent becomes eligible for taking a test again
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: ${simulation_metadata.INFINITY_TIME}
+        test_result_date:
+          dtype: int
+          initialization_function: null
+          learnable: false
+          name: Date when agent receives test result
+          shape:
+          - ${state.agents.citizens.number}
+          - 1
+          value: ${simulation_metadata.INFINITY_TIME}
+  environment:
+    SFInfector:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Infectiousness of Infector
+      shape:
+      - 6
+      value:
+      - 0.0
+      - 0.33
+      - 0.72
+      - 0.0
+      - 0.0
+      - 0.0
+    SFSusceptibility:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Susceptibility by Age Group
+      shape:
+      - 9
+      value:
+      - 0.35
+      - 0.69
+      - 1.03
+      - 1.03
+      - 1.03
+      - 1.03
+      - 1.27
+      - 1.52
+      - 1.52
+    daily_deaths:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: daily_deaths
+      shape:
+      - ${simulation_metadata.num_steps_per_episode}
+      value: 0
+    daily_infected:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: daily_infected
+      shape:
+      - ${simulation_metadata.num_steps_per_episode}
+      value: 0
+    exposed_to_infected_time:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Time from Exposed to Infected
+      shape:
+      - 1
+      value: ${epidemic.EXPOSED_TO_INFECTED_TIME}
+    infected_to_recovered_time:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Infected to Recovered time
+      shape:
+      - 1
+      value: ${epidemic.INFECTED_TO_RECOVERED_TIME}
+    lam_gamma_integrals:
+      dtype: float
+      initialization_function:
+        arguments:
+          rate:
+            dtype: float
+            initialization_function: null
+            learnable: false
+            name: Lam Gamma Rate
+            shape:
+            - 1
+            value: 2.4
+          scale:
+            dtype: float
+            initialization_function: null
+            learnable: false
+            name: Lam Gamma Scale
+            shape:
+            - 1
+            value: 5.5
+          t:
+            dtype: int
+            initialization_function: null
+            learnable: false
+            name: Num Steps
+            shape:
+            - 1
+            value: ${simulation_metadata.num_steps_per_episode}
+        generator: get_lam_gamma_integrals
+      learnable: false
+      name: Lam Gamma Integrals
+      shape:
+      - 10
+    mean_interactions:
+      dtype: int
+      initialization_function:
+        arguments:
+          file_path:
+            initialization_function: null
+            learnable: false
+            name: Filepath for age group stage
+            shape:
+            - 1
+            value: ${simulation_metadata.age_group_file}
+        generator: get_mean_agent_interactions
+      learnable: false
+      name: Mean agent interactions across networks
+      shape:
+      - ${simulation_metadata.num_agents}
+      - 1
+    mortality_rate:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Mortality Rate
+      shape:
+      - 1
+      value: 0.2
+    quarantine_break_prob:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Probability of breaking a quarantine mandate prior to recovery
+      shape:
+      - 1
+      value: 0.1
+    quarantine_start_prob:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Probability of complying to a quarantine mandate
+      shape:
+      - 1
+      value: 0.7
+    test_compliance_prob:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Probability of complying to test recommendation
+      shape:
+      - 1
+      value: 0.95
+    test_false_positive_prob:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Probability of false positive test result
+      shape:
+      - 1
+      value: 0.3
+    test_true_positive_prob:
+      dtype: float
+      initialization_function: null
+      learnable: false
+      name: Probability of true positive test result
+      shape:
+      - 1
+      value: 0.8
+  network:
+    agent_agent:
+      infection_network:
+        arguments:
+          file_path: ${simulation_metadata.infection_network_file}
+        type: network_from_file
+  objects: null
+substeps:
+  '0':
+    active_agents:
+    - citizens
+    description: Transmission of new infections
+    name: Transmission
+    observation:
+      citizens: null
+    policy:
+      citizens:
+        make_isolation_decision:
+          arguments:
+            align_adjustment_vector:
+              dtype: float
+              initialization_function: null
+              learnable: false
+              name: align LLM agents to the populations by shifting
+              shape:
+              - 6
+              value: 0.3
+            align_vector:
+              dtype: float
+              initialization_function: null
+              learnable: false
+              name: align LLM agents to the populations by scaling
+              shape:
+              - 6
+              value: 0.3
+            initial_isolation_prob:
+              dtype: float
+              initialization_function: null
+              learnable: false
+              name: initialize infection prob for the LLM
+              shape:
+              - 6
+              value: 0.5
+          generator: MakeIsolationDecision
+          input_variables:
+            age: agents/citizens/age
+          output_variables:
+          - isolation_decision
+    reward: null
+    transition:
+      new_transmission:
+        arguments:
+          M:
+            dtype: float
+            initialization_function: null
+            learnable: true
+            name: Mortality Rate
+            shape:
+            - 1
+            value: 0.003
+          R2:
+            dtype: float
+            initialization_function: null
+            learnable: true
+            name: R2
+            shape:
+            - ${simulation_metadata.NUM_WEEKS}
+            - 1
+            value: 2.4
+          imported_cases:
+            dtype: float
+            initialization_function: null
+            learnable: true
+            name: Imported Cases
+            shape:
+            - 1
+            value: 10
+          infected_proportion:
+            dtype: float
+            initialization_function: null
+            learnable: true
+            name: infected_proportion
+            shape:
+            - 1
+            value: 0.1
+          k:
+            dtype: float
+            initialization_function: null
+            learnable: true
+            name: underreporting_factor
+            shape:
+            - 1
+            value: 0.2
+        generator: NewTransmission
+        input_variables:
+          SFInfector: environment/SFInfector
+          SFSusceptibility: environment/SFSusceptibility
+          adjacency_matrix: network/agent_agent/infection_network/adjacency_matrix
+          age: agents/citizens/age
+          daily_deaths: environment/daily_deaths
+          daily_infected: environment/daily_infected
+          disease_stage: agents/citizens/disease_stage
+          exposed_to_infected_time: environment/exposed_to_infected_time
+          infected_time: agents/citizens/infected_time
+          lam_gamma_integrals: environment/lam_gamma_integrals
+          mean_interactions: environment/mean_interactions
+          next_stage_time: agents/citizens/next_stage_time
+        output_variables:
+        - disease_stage
+        - next_stage_time
+        - infected_time
+        - daily_infected
+        - daily_deaths

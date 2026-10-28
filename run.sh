@@ -10,12 +10,16 @@
 #   CALIBRATION=path/calibrated_params.txt bash run.sh   # use a specific calibration
 #   CF_TYPES=1,7 CF_ITERS=5 bash run.sh   # other counterfactual types / iterations
 #   OVERWRITE=1 bash run.sh               # replace an existing output folder
+#   REF_OUT=my_ref/01031 bash run.sh      # where the reference_results-format copy goes
 #
 # Output (results/<FIPS>/<RUN_NAME>/):
 #   r_t_daily.csv               day, date, phase, r_t
 #   seirv_daily.csv             day, date, S, E, I, R, V  (mean over iterations)
 #   cases_sim_vs_observed.csv   day, date, simulated_cases, simulated_cases_sd, observed_cases
+#   seir_rates_daily.csv        day, date, phase, r_t, beta, sigma, gamma, ... (SEIRV rates, seirv_fit.py)
 #   cf_raw_7.csv, counterfactual_data7*.csv, counterfactual_results7.png
+# and, for a factual run, the same files in the reference_results format in
+# reference_results_<RUN_NAME>/<FIPS>/ (config_<FIPS>.yaml + the four CSVs above; export_reference.py).
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -49,4 +53,7 @@ cp "$ABM_CONFIG" "$OUT/config_used.yaml"
 echo "[run] FIPS $FIPS params $PARAMS -> $OUT  $(date)"
 GENERATING_COUNTERFACTUAL=true R_SPLINE=0 CF_PARAM_FILE="$(realpath -m "$PARAMS")" CF_OUTPUT_DIR="$PWD/$OUT" \
     $PY main.py "$FIPS"
+if [[ -f "$OUT/seir_rates_daily.csv" ]]; then
+    $PY export_reference.py "$OUT" "${REF_OUT:-reference_results_${RUN_NAME:-run}/$FIPS}" "$PARAMS"
+fi
 echo "[run] done -> $OUT  $(date)"
