@@ -1,9 +1,12 @@
-# Custom counterfactual (CF type 99): copy this file, edit it, then run
+# Custom counterfactual (CF type 99): copy this file to counterfactuals/my_cf.yaml, edit it, then in
+# config.yaml set
 #
-#   CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml RUN_NAME=my_cf bash run.sh
+#   CF_TYPES: "7,99"
+#   CF_SPEC: counterfactuals/my_cf.yaml
+#   COUNTIES: "01031"            # the counties to run, or all
 #
-# (or set CF_TYPES: "99" and CF_SPEC: counterfactuals/my_cf.yaml in config.yaml's run_settings).
-# Output, besides the usual cf_raw_99.csv / counterfactual_data99*.csv:
+# and run `bash run.sh`. Output per county in results/<FIPS>/run/<name>/ (name = `name:` below), copied
+# to reference_results_run/<FIPS>/<name>/. Besides the usual cf_raw_99.csv / counterfactual_data99*.csv:
 #   counterfactual_interventions.csv  what was applied each day (columns at the bottom of this file)
 #   cf_spec_used.yaml                 a copy of this file
 #

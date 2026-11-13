@@ -1,9 +1,11 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
-# Calibrate the ABM to observed daily cases (default county 01031).
-# All settings come from config.yaml (`epidemic` + `run_settings`).
+# Calibrate the ABM to observed daily cases.
+# All settings come from config.yaml (`epidemic` + `run_settings`), including which counties
+# (run_settings.COUNTIES; FIPS=<code> does one county instead).
 #
-#   bash calibrate.sh                     # ~27 min on one A100
+#   bash calibrate.sh                     # every county in COUNTIES, ~27 min each on one A100
+#   FIPS=13013 bash calibrate.sh          # just this county
 #   OVERWRITE=1 bash calibrate.sh         # replace an existing calibration
 #   SKIP_EXISTING=1 bash calibrate.sh     # exit 0 (instead of 1) if the calibration exists
 #   EPOCHS=2 bash calibrate.sh            # smoke test (any run_settings key can be overridden like this)
@@ -15,9 +17,23 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")"
-FIPS="${FIPS:-01031}"
 PY="${PY:-python}"
 export ABM_CONFIG="$(realpath "${CONFIG:-config.yaml}")"
+
+# No FIPS given: do every county in the config's run_settings.COUNTIES (and EXCLUDE_COUNTIES), one after another.
+if [[ -z "${FIPS:-}" ]]; then
+    COUNTY_LIST="$($PY -c 'import os, sys; sys.path.insert(0, os.getcwd()); from run_counties import select_counties
+print(" ".join(select_counties(None, os.environ["ABM_CONFIG"])))' | tail -1)"
+    echo "[calibrate] counties from $ABM_CONFIG: $COUNTY_LIST"
+    failed=""
+    for f in $COUNTY_LIST; do FIPS="$f" bash "$PWD/calibrate.sh" || failed="$failed $f"; done
+    [[ -z "$failed" ]] || { echo "[calibrate] failed:$failed"; exit 1; }
+    exit 0
+fi
+# Networks: data/networks/covid_output_p0/<FIPS>, else the scratch copy of the P0 networks
+if [[ -z "${NETWORKS_DIR:-}" && ! -d "data/networks/covid_output_p0/$FIPS" ]]; then
+    export NETWORKS_DIR="${NETWORKS_DIR_FALLBACK:-/scratch/alrodri_root/alrodri/pkbiswas/epi-diff-abm-dev/networks/covid_output_p0}"
+fi
 
 OUT="result_graphs/$FIPS/$($PY - <<'PY'
 import os, yaml

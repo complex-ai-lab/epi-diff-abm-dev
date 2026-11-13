@@ -68,12 +68,12 @@ To use a different config file, run `CONFIG=my_config.yaml bash run.sh`.
 ### Which counties
 
 The county is not set in the config's model block: `simulation_metadata.POPULATION`, `population_dir` and
-`num_agents` are the template county's (01031), and `main.py <FIPS>` replaces them at run time. Choose the county
-when you launch:
+`num_agents` are the template county's (01031), and `main.py <FIPS>` replaces them at run time. The counties
+are `run_settings.COUNTIES` in the config (default `"01031"`), used by all three launchers:
 
-- **One county**: `FIPS=13013 bash calibrate.sh`, then `FIPS=13013 bash run.sh` (default `FIPS=01031`).
-- **Several or all counties**: `run_counties.py` calibrates (section 3), runs (section 4) and SEIRV-checks
-  (section 10) each county in turn. Its list comes from `run_settings.COUNTIES` in the config:
+- `bash calibrate.sh` and `bash run.sh` calibrate / run every county in `COUNTIES`, one after another.
+  `FIPS=13013 bash run.sh` does just that county instead.
+- `run_counties.py` calibrates (section 3), runs (section 4) and SEIRV-checks (section 10) each county in turn:
 
   ```yaml
   run_settings:
@@ -241,23 +241,36 @@ CF 7, so include 7 in the list.
 (all, or essential and non-essential separately) are open or closed, how many doses are given, and who is
 vaccinated first (a named order such as `elderly_first`, `essential_first` or `hh_largest_first`, or your own
 ranking of age bands and work groups, e.g. `{"65A": 10, "essential": 5}`). Anything left out stays factual.
-Copy `counterfactuals/TEMPLATE.yaml`, which lists every option, and run
 
-```bash
-CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml bash run.sh                       # -> results/<FIPS>/<name>/
-CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml REF_OUT=reference_results_simple/01031 \
-    CONFIG=reference_results_simple/01031/config_01031.yaml bash run.sh            # also -> REF_OUT/<name>/
-```
+1. Copy the template, which lists every option, and edit it; its `name:` names the output folder:
+   `cp counterfactuals/TEMPLATE.yaml counterfactuals/my_cf.yaml`
+2. In `config.yaml`, change these three lines (they are already there):
 
-(or set `CF_SPEC` in `run_settings`). The output folder is the spec's `name:` (a `RUN_NAME` overrides it). With
-`WITH_VACC: false` (the `reference_results_simple` configs) no doses are given, so only the school and work levers
-act, and `counterfactual_interventions.csv` says `off (WITH_VACC: false)`. Example:
-`reference_results_simple/01031/example_custom_cf/` is `TEMPLATE.yaml` run on 01031. Besides the usual
-`cf_raw_99.csv` / `counterfactual_data99*.csv`, the run writes `counterfactual_interventions.csv` (the columns of `intervention.csv` with the values actually applied,
-plus `school_policy`, `work_policy`, `work_closure_scope`, `occ_essential_intervention`,
-`occ_nonessential_intervention`, `vaccine_priority`, `vaccine_dose_multiplier` and the factual values) and
-`cf_spec_used.yaml`. The spec is parsed in `covid_abm/custom_cf.py` and applied in `transition.py`'s
-`forward()`, using the same common random numbers as the other CFs, so CF 99 compares directly with CF 7.
+   ```yaml
+     CF_TYPES: "7,99"                     # was "7"; 7 = factual, 99 = your custom CF
+     CF_SPEC: counterfactuals/my_cf.yaml  # was null
+     COUNTIES: "01031 13013"              # the counties to run, or all
+   ```
+
+3. `bash calibrate.sh` (skips counties already calibrated with this config), then `bash run.sh`. Both read
+   the same `config.yaml` and go through every county in `COUNTIES`.
+
+Output, per county:
+
+| folder | contents |
+|---|---|
+| `results/<FIPS>/run/` | the factual run (CF 7) |
+| `results/<FIPS>/run/<name>/` | the custom CF: `counterfactual_interventions.csv`, `cf_spec_used.yaml`, `config_used.yaml`, `cf_raw_99.csv`, `counterfactual_data99*.csv`, `counterfactual_results99.png` |
+| `reference_results_run/<FIPS>/<name>/` | a copy of the custom CF folder, next to the county's factual reference files |
+
+`counterfactual_interventions.csv` has one row per day: the columns of `intervention.csv` with the values
+actually applied, plus `school_policy`, `work_policy`, `work_closure_scope`, `occ_essential_intervention`,
+`occ_nonessential_intervention`, `vaccine_priority`, `vaccine_dose_multiplier` and the factual values. With
+`WITH_VACC: false` no doses are given, so only the school and work levers act, and the file says
+`off (WITH_VACC: false)`. Example: `reference_results_simple/01031/example_custom_cf/` is `TEMPLATE.yaml` run on
+01031 with the stored simple config. The spec is parsed in `covid_abm/custom_cf.py` and applied in
+`transition.py`'s `forward()` with the same common random numbers as the other CFs, so CF 99 compares directly
+with CF 7.
 
 Other inputs (vaccines, school or workplace closures, observed cases) are the data files listed below. You can
 edit them directly.

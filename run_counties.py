@@ -14,7 +14,12 @@ Per county:
   1. calibrate.sh   skipped (SKIP_EXISTING=1) if the calibration's calibrated_params.txt exists
   2. run.sh         -> results/<FIPS>/<RUN_NAME>/ and reference_results_<RUN_NAME>/<FIPS>/;
                     skipped if reference_results_<RUN_NAME>/<FIPS>/seir_rates_daily.csv exists
-  3. seirv_check.py -> results/seirv_check/reference_results_<RUN_NAME>/<FIPS>/
+  3. custom CF      only if run_settings.CF_TYPES includes 99: run.sh with CF 99 and run_settings.CF_SPEC
+                    -> results/<FIPS>/<RUN_NAME>_<spec name>/<spec name>/ and
+                       reference_results_<RUN_NAME>/<FIPS>/<spec name>/;
+                    skipped if that folder's counterfactual_interventions.csv exists
+  4. seirv_check.py -> results/seirv_check/reference_results_<RUN_NAME>/<FIPS>/
+Everything comes from the config (COUNTIES, CF_TYPES, CF_SPEC); shell variables of the same name override it.
 Counties need populations/pop<FIPS> and data/processed_data/<FIPS>; their networks are read from
 data/networks/covid_output_p0/<FIPS>, else from $NETWORKS_DIR_FALLBACK (the scratch copy of the P0 networks).
 A failed county is reported and skipped; the script exits 1 at the end if any failed.
@@ -30,6 +35,8 @@ import time
 
 import yaml
 
+from covid_abm.custom_cf import spec_name
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 P0_NETWORKS = "/scratch/alrodri_root/alrodri/pkbiswas/epi-diff-abm-dev/networks/covid_output_p0"
 
@@ -43,8 +50,28 @@ def step(name, cmd, env, log):
     return time.time() - t0
 
 
+def cf_plan(config):
+    """(factual CF types for step 2, custom CF spec path or None) from run_settings (env overrides)."""
+    with open(os.path.join(ROOT, config)) as f:
+        rs = yaml.safe_load(f).get("run_settings") or {}
+    types = [t.strip() for t in str(os.environ.get("CF_TYPES") or rs.get("CF_TYPES") or "7").split(",") if t.strip()]
+    spec = os.environ.get("CF_SPEC") or rs.get("CF_SPEC")
+    if "99" not in types:
+        return ",".join(types), None
+    if not spec:
+        sys.exit(f"[counties] CF_TYPES includes 99 but no CF_SPEC is set in {config}")
+    with open(os.path.join(ROOT, spec)) as f:
+        spec_name(yaml.safe_load(f) or {}, spec)          # fail early on a bad name
+    others = [t for t in types if t != "99"]
+    if "7" not in others:
+        others.insert(0, "7")                             # step 2 always makes the factual reference
+    return ",".join(others), spec
+
+
 def run_county(fips, args, py):
+    factual_types, spec = args.cf_plan
     env = dict(os.environ, FIPS=fips, CONFIG=args.config, RUN_NAME=args.run_name, PY=py)
+    env.pop("CF_SPEC", None)
     for need in (f"populations/pop{fips}", f"data/processed_data/{fips}"):
         if not os.path.exists(os.path.join(ROOT, need)):
             raise RuntimeError(f"missing {need}")
@@ -64,8 +91,19 @@ def run_county(fips, args, py):
     if os.path.exists(os.path.join(ROOT, ref, "seir_rates_daily.csv")):
         done.append("run skipped")
     else:
-        secs = step("run", ["bash", "run.sh"], dict(env, OVERWRITE="1"), log("run"))
+        secs = step("run", ["bash", "run.sh"], dict(env, OVERWRITE="1", CF_TYPES=factual_types), log("run"))
         done.append(f"run {secs / 60:.0f} min")
+    if spec:
+        with open(os.path.join(ROOT, spec)) as f:
+            name = spec_name(yaml.safe_load(f) or {}, spec)
+        if os.path.exists(os.path.join(ROOT, ref, name, "counterfactual_interventions.csv")):
+            done.append(f"custom CF {name} skipped")
+        else:
+            secs = step("custom_cf", ["bash", "run.sh"],
+                        dict(env, OVERWRITE="1", CF_TYPES="99", CF_SPEC=spec,
+                             RUN_NAME=f"{args.run_name}_{name}", REF_OUT=ref),
+                        log(f"cf_{name}"))
+            done.append(f"custom CF {name} {secs / 60:.0f} min -> {ref}/{name}/")
     step("seirv_check", [py, "seirv_check.py", "--rates", f"{ref}/seir_rates_daily.csv"], env, log("seirv_check"))
     with open(log("seirv_check")) as f:
         return ", ".join(done) + " | " + f.read().strip().splitlines()[-1]
@@ -118,6 +156,9 @@ def main():
     args = ap.parse_args()
     py = os.environ.get("PY", os.path.join(ROOT, ".venv/bin/python"))
     counties = select_counties(args.counties, args.config)
+    args.cf_plan = cf_plan(args.config)
+    if args.cf_plan[1]:
+        print(f"[counties] custom CF 99 from {args.cf_plan[1]} for every county", flush=True)
     task, count = int(os.environ.get("SLURM_ARRAY_TASK_ID", 0)), int(os.environ.get("SLURM_ARRAY_TASK_COUNT", 1))
     if args.queue:
         os.makedirs(args.queue, exist_ok=True)
