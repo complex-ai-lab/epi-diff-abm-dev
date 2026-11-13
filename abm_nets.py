@@ -53,10 +53,12 @@ CF_POLICY_DESC = {
     28: "whole-household vacc; essential-worker homes first; NPI factual",
     29: "UNIFORM-VACC REFERENCE (= the old CF 7); factual school, factual work",
     30: "working-age-first vacc; school closed, factual work",
+    99: "CUSTOM (levers from the CF_SPEC yaml; see counterfactuals/TEMPLATE.yaml)",
 }
 
 # Folder name per CF type. Shared by execute() and eval_net().
 CF_FOLDER_MAP = {
+    99: "99_custom_cf_spec",
     1: "01_static_all_open",
     2: "02_static_school_closed_work_open",
     3: "03_static_school_open_work_closed",
@@ -888,6 +890,15 @@ def eval_net(sim, runner):
                 einc_df = pd.DataFrame(avg_einc, columns=["t", "essential_new", "nonessential_new", "other_new"])
                 einc_df["t"] = einc_df["t"].astype(int)
                 einc_df.to_csv(f'{output_dir}/counterfactual_data{cf_type}_essential_incidence.csv', index=False)
+
+            if cf_type == 99:
+                # what the custom CF applied each day: intervention.csv's columns + work/vaccine policy
+                import shutil
+                ccf = substep._get_custom_cf()
+                ccf.table.to_csv(os.path.join(output_dir, "counterfactual_interventions.csv"), index=False)
+                shutil.copyfile(ccf.spec_path, os.path.join(output_dir, "cf_spec_used.yaml"))
+                print(f"[INFO] custom CF '{ccf.name}': wrote counterfactual_interventions.csv "
+                      f"and cf_spec_used.yaml to {output_dir}", flush=True)
 
             if cf_type == 7:
                 write_factual_run_csvs(sim, output_dir, case_numbers, all_full_cases, substep.r_t_history,

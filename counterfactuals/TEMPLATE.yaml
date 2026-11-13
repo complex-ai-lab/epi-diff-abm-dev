@@ -1,0 +1,97 @@
+# Custom counterfactual (CF type 99): copy this file, edit it, then run
+#
+#   CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml RUN_NAME=my_cf bash run.sh
+#
+# (or set CF_TYPES: "99" and CF_SPEC: counterfactuals/my_cf.yaml in config.yaml's run_settings).
+# Output, besides the usual cf_raw_99.csv / counterfactual_data99*.csv:
+#   counterfactual_interventions.csv  what was applied each day (columns at the bottom of this file)
+#   cf_spec_used.yaml                 a copy of this file
+#
+# Anything you leave out is FACTUAL, so a file with only `name:` reproduces CF 7 exactly.
+# Dates are YYYY-MM-DD. Simulated days run from 2020-10-12 (t = 0, 14 burn-in days) to
+# 2021-04-25 (with HORIZON_DAYS: 182).
+#
+# ---------------------------------------------------------------------------------------
+# HOW TO GIVE A VALUE OVER TIME (school, work, vaccine.doses, vaccine.schedule)
+#   either one value for the whole run:      school: closed
+#   or a list of date ranges:                school:
+#                                              - {from: 2020-11-23, to: 2021-01-04, value: closed}
+#                                              - {from: 2021-01-05, value: open}
+#   `to` is inclusive and defaults to the last simulated day. Ranges are applied top to
+#   bottom, so a later range overrides an earlier one. Days in no range stay factual.
+#   (vaccine.schedule uses the key `priority` instead of `value`.)
+# ---------------------------------------------------------------------------------------
+
+name: example_custom_cf          # free text, shown in the log
+
+# --- SCHOOL ----------------------------------------------------------------------------
+# open      (= 0) school contacts kept (~75-100% of edges)
+# closed    (= 1) school contacts cut  (~0-25% of edges kept)
+# factual   the county's observed school_intervention for that day
+# flipped   1 - factual
+school:
+  - {from: 2020-11-23, to: 2021-01-04, value: closed}
+
+# --- WORK ------------------------------------------------------------------------------
+# Same four values as school (open / closed / factual / flipped, or 0 / 1), applied to
+# ALL workplaces. To treat essential and non-essential workplaces differently:
+#   nonessential_closed                         non-essential closed, essential factual (= CF 19's work lever)
+#   {essential: <value>, nonessential: <value>} each one of open / closed / factual / flipped
+# Essential = CISA sectors AGRICULTURE MINING UTILITIES TRANSPORTATION HEALTHCARE FOOD
+# MANUFACTURING CONSTRUCTION WASTEMANAGEMENT OTHER EDUCATION; non-essential = WHOLESALETRADE
+# RETAILTRADE INFORMATION FINANCEINSURANCE REALESTATERENTAL SCIENTIFICTECHNICAL
+# ENTERPRISEMANAGEMENT ART (transition.py ESSENTIAL_SECTORS). Needs
+# data/population_data/*/<FIPS>_population.csv.
+# Note: a split value always uses the selective closure, so {essential: factual,
+# nonessential: factual} draws different edges than plain `factual` (same expected contact).
+work:
+  - {from: 2020-12-01, to: 2021-01-31, value: nonessential_closed}
+  - {from: 2021-02-01, to: 2021-02-28, value: {essential: open, nonessential: closed}}
+
+# --- VACCINES --------------------------------------------------------------------------
+vaccine:
+  # doses: how many doses per day, as a multiplier on the county's observed daily doses
+  #   factual (= 1), any number >= 0 (0.5 = half, 2 = double), or date ranges of numbers.
+  #   Doses never exceed the susceptibles left that day.
+  doses: factual
+  # doses:
+  #   - {from: 2021-01-01, to: 2021-01-31, value: 2.0}
+
+  # schedule: who is vaccinated first, by date. Days in no range use `factual`.
+  #   Named priorities:
+  #     factual                  observed age-phased allocation (65+ gets vaccines_65plus, rest to under-65)
+  #     uniform                  uniform at random over susceptibles
+  #     none                     no doses at all
+  #     elderly_first            65A > 50t64 > 40t49 > 30t39 > 20t29 > U19
+  #     working_age_first        20t29 = 30t39 = 40t49 = 50t64 > 65A > U19
+  #     essential_first          essential-sector workers first, then everyone else
+  #     hh_random                whole households at a time, random household order
+  #     hh_elderly_home_first    whole households, those with a 65+ member first
+  #     hh_largest_first         whole households, largest first
+  #     hh_essential_home_first  whole households, those with an essential worker first
+  #   Or your own ordering: a dict of STRING keys -> rank (number >= 0, higher = sooner).
+  #     age-band keys:   "U19" "20t29" "30t39" "40t49" "50t64" "65A"
+  #     work-group keys: "essential" "nonessential" "not_working"
+  #     An agent's rank = its age-band rank + its work-group rank (a key left out counts 0).
+  #     Ties are broken at random. Example: {"65A": 10, "essential": 5} vaccinates 65+ first
+  #     (65+ essential workers before other 65+), then essential workers under 65, then everyone else.
+  #   Only susceptible agents are vaccinated, whatever the priority.
+  schedule:
+    - {from: 2020-12-14, to: 2021-01-31, priority: {"65A": 5, "50t64": 4, "40t49": 3, "30t39": 2, "20t29": 1, "U19": 0}}
+    - {from: 2021-02-01, to: 2021-02-28, priority: {"65A": 1, "essential": 0}}
+    - {from: 2021-03-01, priority: uniform}
+
+# ---------------------------------------------------------------------------------------
+# counterfactual_interventions.csv, one row per simulated day:
+#   date, school_intervention, occ_intervention, vaccines, vaccines_65plus, t
+#       as in populations/pop<FIPS>/intervention.csv, but the values APPLIED in this CF
+#       (occ_intervention = the essential-workplace value when work is split;
+#        vaccines / vaccines_65plus = observed doses x multiplier, 0 under `none`)
+#   school_policy                  open / closed / factual / flipped
+#   work_policy                    open / closed / factual / flipped, or essential=..;nonessential=..
+#   work_closure_scope             all | selective
+#   occ_essential_intervention     0/1 applied to essential workplaces
+#   occ_nonessential_intervention  0/1 applied to non-essential workplaces
+#   vaccine_priority               the named priority, or custom:{"65A": 10, ...}
+#   vaccine_dose_multiplier        multiplier used that day
+#   factual_school_intervention, factual_occ_intervention, factual_vaccines   the observed values

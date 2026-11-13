@@ -85,9 +85,9 @@ when you launch:
   ```
 
   ```bash
-  .venv/bin/python run_counties.py --config config_simple.yaml --run-name simple           # COUNTIES from the config
-  .venv/bin/python run_counties.py --config config_simple.yaml --run-name simple --counties 13013 17037   # --counties overrides it
-  sbatch --array=0-3 --export=ALL,ARGS="--config config_simple.yaml --run-name simple" run_counties.sbatch
+  .venv/bin/python run_counties.py --config config.yaml --run-name simple           # COUNTIES from the config
+  .venv/bin/python run_counties.py --config config.yaml --run-name simple --counties 13013 17037   # --counties overrides it
+  sbatch --array=0-3 --export=ALL,ARGS="--config config.yaml --run-name simple" run_counties.sbatch
   ```
 
   With an sbatch array each task takes every n-th county (`counties[task::n_tasks]`, one GPU each; 4 tasks fill
@@ -219,14 +219,14 @@ simulation_metadata:
   WITH_VACC: false                  # was true: no S -> V, the doses in intervention.csv are ignored
 ```
 
-`config_simple.yaml` is `config.yaml` with exactly these two changes. Recalibrate after the change: the stored
+Make these two changes in `config.yaml` (this is how `reference_results_simple/` was made). Recalibrate after the change: the stored
 R_t was fitted with vaccines and waning. `WITH_VACC` is part of the calibration folder name
 (`..._True_False_False_metro_0/`), so the no-vaccine calibration does not replace the default one; the waning
 mode is not, so a calibration that differs from another only in `IMMUNITY_WANING_MODE` needs `OVERWRITE=1`.
 
 ```bash
-CONFIG=config_simple.yaml bash calibrate.sh
-CONFIG=config_simple.yaml RUN_NAME=simple bash run.sh
+bash calibrate.sh
+RUN_NAME=simple bash run.sh
 ```
 
 Only one of the two is fine too (e.g. only `IMMUNITY_WANING_MODE: none`). `CF_TYPES=11` (below) is different: it
@@ -236,6 +236,28 @@ set `MIXING: mean_field` and `STAGE_DURATIONS: exponential` (section 7).
 **Run counterfactuals.** For example, `CF_TYPES=1,7,11 RUN_NAME=cf bash run.sh` runs all-open, factual, and
 no vaccines. The full list is in `CF_POLICY_DESC` in `abm_nets.py`. The three summary CSVs always come from
 CF 7, so include 7 in the list.
+
+**Write your own counterfactual (CF 99).** One YAML file sets, by date, whether schools and workplaces
+(all, or essential and non-essential separately) are open or closed, how many doses are given, and who is
+vaccinated first (a named order such as `elderly_first`, `essential_first` or `hh_largest_first`, or your own
+ranking of age bands and work groups, e.g. `{"65A": 10, "essential": 5}`). Anything left out stays factual.
+Copy `counterfactuals/TEMPLATE.yaml`, which lists every option, and run
+
+```bash
+CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml bash run.sh                       # -> results/<FIPS>/<name>/
+CF_TYPES=99 CF_SPEC=counterfactuals/my_cf.yaml REF_OUT=reference_results_simple/01031 \
+    CONFIG=reference_results_simple/01031/config_01031.yaml bash run.sh            # also -> REF_OUT/<name>/
+```
+
+(or set `CF_SPEC` in `run_settings`). The output folder is the spec's `name:` (a `RUN_NAME` overrides it). With
+`WITH_VACC: false` (the `reference_results_simple` configs) no doses are given, so only the school and work levers
+act, and `counterfactual_interventions.csv` says `off (WITH_VACC: false)`. Example:
+`reference_results_simple/01031/example_custom_cf/` is `TEMPLATE.yaml` run on 01031. Besides the usual
+`cf_raw_99.csv` / `counterfactual_data99*.csv`, the run writes `counterfactual_interventions.csv` (the columns of `intervention.csv` with the values actually applied,
+plus `school_policy`, `work_policy`, `work_closure_scope`, `occ_essential_intervention`,
+`occ_nonessential_intervention`, `vaccine_priority`, `vaccine_dose_multiplier` and the factual values) and
+`cf_spec_used.yaml`. The spec is parsed in `covid_abm/custom_cf.py` and applied in `transition.py`'s
+`forward()`, using the same common random numbers as the other CFs, so CF 99 compares directly with CF 7.
 
 Other inputs (vaccines, school or workplace closures, observed cases) are the data files listed below. You can
 edit them directly.
@@ -308,7 +330,7 @@ compartment on every day is within about 2 standard errors of the SEIRV mean, an
 | `data/networks/covid_output_p0/01031/mobility_networks/` | contact networks: `HOUSEHOLD_NETWORK.npz`, `SCHOOL_NETWORK.npz`, `occnets/<t>.npz` and `randnets/<t>.npz` (workplace and community, one per observed day) |
 | `result_graphs/`, `results/` | outputs written by the scripts (git-ignored) |
 | `reference_results/<FIPS>/` | stored factual (CF 7) results of the paper model for 01031 and 10 other counties (see below) |
-| `reference_results_simple/<FIPS>/` | the same 11 counties without vaccination and waning (`config_simple.yaml`; see below) |
+| `reference_results_simple/<FIPS>/` | the same 11 counties without vaccination and waning (`config.yaml` with `IMMUNITY_WANING_MODE: none`, `WITH_VACC: false`; see below) |
 
 ### Reference results
 
@@ -325,7 +347,7 @@ Both folders have one subfolder per county with the same five files:
 | folder | model | where it comes from |
 |---|---|---|
 | `reference_results/` | the paper model: networks, fixed waning (R→S 60 d, V→S 90 d), observed vaccines | the stored calibrated P0 runs on `preetom-dev` (`seir_rates_daily.csv` added with `seirv_fit.py`) |
-| `reference_results_simple/` | the same, without vaccination and waning (`config_simple.yaml`) | calibrated and run in this branch (`run_counties.py`, section 10) |
+| `reference_results_simple/` | the same, without vaccination and waning (`IMMUNITY_WANING_MODE: none`, `WITH_VACC: false`) | calibrated and run in this branch (`run_counties.py`, section 10) |
 
 The 11 counties:
 
@@ -355,7 +377,7 @@ for f in 13013 17037 19027 21071 27005 30029 36051 42059 47005 51149; do
     mkdir -p data/processed_data/$f && ln -sfn $M/data/processed_data/$f/202010-202104 data/processed_data/$f/202010-202104
 done
 export NETWORKS_DIR=/scratch/alrodri_root/alrodri/pkbiswas/epi-diff-abm-dev/networks/covid_output_p0   # .pkl networks
-FIPS=13013 CONFIG=config_simple.yaml bash calibrate.sh
+FIPS=13013 bash calibrate.sh
 ```
 
 `run_counties.py` sets `NETWORKS_DIR` itself for counties without networks in `data/networks/`.
@@ -369,6 +391,7 @@ The networks are compressed edge lists, readable with `np.load(path)["edges"]` (
 | `main.py` | entry point; reads `config.yaml`, seeds, builds the simulator, calls `abm_nets.eval_net` |
 | `abm_nets.py` | calibration loop (spline on log R_t, Poisson loss) and counterfactual / run loop; writes the 4 summary CSVs |
 | `covid_abm/substeps/new_transmission/transition.py` | disease dynamics: S→E→I→R, S→V vaccination, waning, interventions |
+| `covid_abm/custom_cf.py`, `counterfactuals/TEMPLATE.yaml` | custom counterfactual CF 99 from one YAML file (section 5) |
 | `covid_abm/spline_basis.py` | B-spline basis for log R_t |
 | `agent_torch/` | AgentTorch simulation framework |
 | `calibrate.sh`, `run.sh` | the two launchers |
@@ -377,7 +400,6 @@ The networks are compressed edge lists, readable with `np.load(path)["edges"]` (
 | `seirv_fit.py` | SEIRV rates of a run -> `seir_rates_daily.csv` (run.sh calls it; section 10) |
 | `seirv_check.py` | SEIRV model from a `seir_rates_daily.csv`, compared with the ABM, plus plots (section 10) |
 | `export_reference.py` | copies a run into the `reference_results` format (run.sh calls it; section 10) |
-| `config_simple.yaml` | `config.yaml` without waning and vaccination (section 5) |
 | `run_counties.py`, `run_counties.sbatch` | calibrate -> run -> SEIRV check for many counties (section 10) |
 
 The model code comes from the `preetom-dev` branch; the repo layout follows `b5a6372`. Data preparation,
@@ -390,8 +412,8 @@ reference counties a single ratio misses the ABM's cases by 23–83%). Instead, 
 the run's output. The pipeline:
 
 ```bash
-CONFIG=config_simple.yaml bash calibrate.sh                   # 1. calibrate
-CONFIG=config_simple.yaml RUN_NAME=simple bash run.sh         # 2. run -> results/01031/simple/ and
+bash calibrate.sh                                             # 1. calibrate (config.yaml with waning and vaccines off, section 5)
+RUN_NAME=simple bash run.sh                                   # 2. run -> results/01031/simple/ and
                                                               #    reference_results_simple/01031/
 .venv/bin/python seirv_check.py --rates reference_results_simple/01031/seir_rates_daily.csv
                                                               # 3. SEIRV vs ABM -> results/seirv_check/reference_results_simple/01031/
@@ -459,8 +481,8 @@ skipping a calibration or run that already exists; one line per county, failed c
 `run_counties.sbatch` splits the counties over 3 GPUs of `alrodri-a100` (needs the links in section 8):
 
 ```bash
-sbatch run_counties.sbatch                                     # config_simple.yaml, RUN_NAME=simple
-.venv/bin/python run_counties.py --config config_simple.yaml --run-name simple --counties 13013
+sbatch run_counties.sbatch                                     # config.yaml, RUN_NAME=run
+.venv/bin/python run_counties.py --config config.yaml --run-name simple --counties 13013
 ```
 
 Logs: `results/pipeline_logs/`. The check alone on the stored paper-model runs:
@@ -473,10 +495,10 @@ done
 
 Results, reference counties (days 14–181): SEIRV cases match the ABM with correlation 0.95–0.996 and 8–18%
 absolute error, no compartment is more than 3.5% of N off, and V matches exactly. The same 11 counties
-with `config_simple.yaml` (`reference_results_simple/`, days 14–195): correlation 0.93–0.994, 7–19% error, at
+without waning and vaccination (`reference_results_simple/`, days 14–195): correlation 0.93–0.994, 7–19% error, at
 most 5.1% of N off (27005); median beta 0.24–0.28 /day, beta / r_t 0.17–0.29. gamma_eff is about
 0.20 (= 1/5), but sigma_eff is about 0.25 instead of 1/3: agents stay about a day longer in E in the ABM, so
 the SEIRV model has a lower E (and R) peak.
 
-`config_simple.yaml` is `config.yaml` with no waning (`IMMUNITY_WANING_MODE: none`) and no vaccination
+That variant is `config.yaml` with no waning (`IMMUNITY_WANING_MODE: none`) and no vaccination
 (`WITH_VACC: false`), still the network ABM; its calibration goes to `..._True_False_False_metro_0/`.

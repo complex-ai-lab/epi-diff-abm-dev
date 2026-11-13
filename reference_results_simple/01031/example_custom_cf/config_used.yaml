@@ -2,9 +2,9 @@
 # COVID ABM config -- county 01031 (Coffee County, AL), 2020-10-26 .. 2021-04-25
 # SIMPLE variant of config.yaml: no immunity waning (IMMUNITY_WANING_MODE: none) and no vaccination
 # (WITH_VACC: false); everything else as config.yaml. Use with CONFIG=config_simple.yaml.
-#   1) bash calibrate.sh   fits weekly R_t, initial infected fraction, k to cases
-#   2) bash run.sh         runs the model (factual, CF 7) -> results/01031/run/
-# Edit the EPIDEMIC PARAMETERS block, then re-run. See README.md.
+# Config of the factual run (CF 7) behind reference_results_simple/01031/ (run.sh output results/01031/simple).
+# R_T, INITIAL_INFECTED and K are the values that run used. Rerun with
+#   CONFIG=reference_results_simple/01031/config_01031.yaml RUN_NAME=ref bash run.sh
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -23,7 +23,7 @@ epidemic:
   #   R_T: null            -> the calibrated weekly R_t (calibrated_params.txt)
   #   R_T: 1.2             -> that R_t in every week
   #   R_T: [1.1, 0.9, ...] (26 values) -> one R_t per week (week 0 starts 2020-10-26)
-  R_T: null
+  R_T: [0.865484, 0.815133, 0.713890, 0.612060, 0.645769, 0.809107, 0.972757, 0.935251, 0.815759, 0.796832, 0.845814, 0.891510, 0.991188, 1.024708, 0.796141, 0.585567, 0.563843, 0.713033, 0.977762, 1.239618, 1.319170, 1.154896, 0.924644, 0.774179, 0.714506, 0.709894]   # calibrated, weeks 0..25
   # Daily R_t; replaces R_T when set:
   #   R_T_DAILY: [1.1, 1.08, ...]   -> one value per day from 2020-10-26, at least HORIZON_DAYS values
   #                                     (the burn-in keeps R_T_BURN_IN)
@@ -31,8 +31,8 @@ epidemic:
   #                                     `day` column (simulation step, burn-in included, e.g. an edited
   #                                     results/01031/run/r_t_daily.csv) rows are placed by day
   R_T_DAILY: null
-  INITIAL_INFECTED: null             # fraction infected at day 0; null -> calibrated
-  K: null                            # reporting fraction (cases = k x new infections); null -> calibrated
+  INITIAL_INFECTED: 0.003398             # fraction infected at day 0 (calibrated)
+  K: 0.243435                            # reporting fraction (cases = k x new infections) (calibrated)
   # With R_T (or R_T_DAILY), INITIAL_INFECTED and K all set, run.sh needs no calibration.
 
   # --- R_t during calibration (calibrate.sh) ----------------------------------
@@ -88,13 +88,6 @@ run_settings:
   CF_TYPES: "7"                      # all used in the paper: "1,2,3,4,5,6,7,8,9,10,11,29"
   CF_ITERS: 30
   LAYER_ATTRIBUTION: 1
-  # counties for run_counties.py (calibrate -> run -> SEIRV check, README section 2); --counties overrides it.
-  #   all = every county with populations/pop<FIPS>, data/processed_data/<FIPS> and networks;
-  #   or FIPS codes, e.g. "01031" or "01031 13013" (quoted, or YAML drops the leading zero)
-  COUNTIES: all
-  # dropped from "all": calibration fails for these (spline coefficient box saturates),
-  # so "all" is 151 counties
-  EXCLUDE_COUNTIES: "21179 48091"
 
 simulation_metadata:
   ALIGN_LLM: true

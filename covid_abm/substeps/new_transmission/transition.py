@@ -13,6 +13,7 @@ from agent_torch.core.substep import SubstepTransitionMessagePassing
 from agent_torch.core.helpers import get_by_path
 from agent_torch.core.helpers import set_by_path
 from agent_torch.core.distributions import StraightThroughBernoulli
+from covid_abm.custom_cf import CustomCF, CUSTOM_CF_TYPE, AGE_KEYS, WORK_KEYS
 
 # --- Age encoding for this model ---------------------------------------------
 # populations/pop<FIPS>/age.pickle stores a 6-value code per agent
@@ -96,6 +97,7 @@ VACC_MODES = frozenset({
     "essential_first",
     "hh_random", "hh_elderly_home_first", "hh_largest_first",
     "hh_essential_home_first",
+    "custom_rank",       # CF 99 only: a {age band / work group: rank} dict from CF_SPEC
 })
 
 # The authority for which allocation each counterfactual uses.
@@ -331,6 +333,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         self.fix_age_split = os.environ.get("FIX_AGE_SPLIT", "0") == "1"
         # int64 [N] essentiality code, lazily loaded by _require_agent_essential
         self._agent_essential = None
+        self._custom_cf = None   # CF 99: loaded from CF_SPEC on first use
         # household-membership lookups, lazily loaded by _require_household_members
         # (only on a CF 25-28 path; never by calibration or CF 1-24).
         self._hh_members = None
@@ -394,6 +397,22 @@ class NewTransmission(SubstepTransitionMessagePassing):
         code[occ.isin(NON_ESSENTIAL_SECTORS).to_numpy()] = 2
         self._agent_essential = torch.tensor(code, device=self.device)
         return self._agent_essential
+
+    def _get_custom_cf(self):
+        """CF 99: the parsed CF_SPEC file (loaded once)."""
+        if self._custom_cf is None:
+            spec = os.environ.get("CF_SPEC", "").strip()
+            if spec in ("", "None", "null"):
+                raise RuntimeError("CF type 99 (custom) needs CF_SPEC=<yaml> (run_settings.CF_SPEC "
+                                   "in config.yaml, or the environment); see counterfactuals/TEMPLATE.yaml")
+            self._custom_cf = CustomCF(
+                spec,
+                f"{self.config['simulation_metadata']['population_dir']}/intervention.csv",
+                self.num_timesteps,
+                with_vacc=bool(self.config['simulation_metadata']['WITH_VACC']))
+            if self._custom_cf.needs_essential():
+                self._require_agent_essential()   # fail before day 0, not mid-run
+        return self._custom_cf
 
     def _essential_group_masks(self):
         e = self._require_agent_essential()
@@ -1031,7 +1050,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         return min(max(t - self.burn_in_days, 0), len(self.networks['occ']) - 1)
 
     def apply_intervention_fast(self, intervention, edges, t=0, net_id="net",
-                                essential_edge_mask=None):
+                                essential_edge_mask=None, nonessential_intervention=1):
         if edges.size(0) == 0: return edges
 
         # CRN in counterfactual mode: the closure fraction and the kept-edge
@@ -1069,11 +1088,13 @@ class NewTransmission(SubstepTransitionMessagePassing):
             open_rm = torch.clamp(OPEN_RM_MEAN + RM_SD * eps, 0.0, 0.25)
             closed_rm = torch.clamp(CLOSED_RM_MEAN + RM_SD * eps, 0.75, 1.0)
             ess_rm = open_rm if intervention == 0 else closed_rm
+            # CF 19-23 always close non-essential workplaces; CF 99 may open them
+            ne_rm = open_rm if nonessential_intervention == 0 else closed_rm
             e_idx = essential_edge_mask.nonzero(as_tuple=True)[0]
             ne_idx = (~essential_edge_mask).nonzero(as_tuple=True)[0]
             g_sel = self._crn_gen(t, "interv_occ_selective") if cf else None
             ke = int(e_idx.numel() * (1.0 - ess_rm.item()))
-            kne = int(ne_idx.numel() * (1.0 - closed_rm.item()))
+            kne = int(ne_idx.numel() * (1.0 - ne_rm.item()))
             kept_e = e_idx[torch.randperm(e_idx.numel(), device=self.device, generator=g_sel)[:ke]]
             kept_ne = ne_idx[torch.randperm(ne_idx.numel(), device=self.device, generator=g_sel)[:kne]]
             return edges[torch.cat([kept_e, kept_ne])]
@@ -1101,14 +1122,14 @@ class NewTransmission(SubstepTransitionMessagePassing):
 
     def apply_vaccines(self, current_stages, num_vaccines, tau=0.1, t=0,
                        agents_ages=None, priority=None, essential_first=False,
-                       household_order=None):
+                       household_order=None, agent_rank=None):
         device = current_stages.device
         N = current_stages.shape[0]
         if sum(x is not None and x is not False
-               for x in (priority, essential_first or None, household_order)) > 1:
+               for x in (priority, essential_first or None, household_order, agent_rank)) > 1:
             raise RuntimeError(
-                "apply_vaccines: priority / essential_first / household_order are "
-                "mutually exclusive")
+                "apply_vaccines: priority / essential_first / household_order / agent_rank "
+                "are mutually exclusive")
 
         is_susceptible = self.soft_eq(current_stages, self.SUSCEPTIBLE_VAR, temperature=tau)
         logits = torch.log(is_susceptible + 1e-10).view(N, 1)
@@ -1142,6 +1163,12 @@ class NewTransmission(SubstepTransitionMessagePassing):
                 rank = rank + float(r) * (a == code).float()
             BIG = 1.0e4   # >> |logits| (~23) and Gumbel noise (~O(1))
             y = (y.reshape(-1) + BIG * rank * susc).view(N, 1)
+
+        # CF 99 custom priority: a per-agent rank (age-band rank + work-group
+        # rank) added to the SUSCEPTIBLE score, same offset trick as above.
+        if agent_rank is not None:
+            susc = (current_stages.reshape(-1) == self.SUSCEPTIBLE_VAR).float()
+            y = (y.reshape(-1) + 1.0e4 * agent_rank * susc).view(N, 1)
 
         # Work-essentiality CF 18/20/21/23: essential-sector workers (code 1)
         # vaccinated before anyone else. Same susceptibles-only offset trick.
@@ -1337,8 +1364,21 @@ class NewTransmission(SubstepTransitionMessagePassing):
         indices = selected.nonzero(as_tuple=True)[0]
         return self._commit_vaccinations(current_stages, indices, logits)
 
+    def _custom_agent_rank(self, ranks, agents_ages):
+        """CF 99: rank per agent = rank of its age band + rank of its work group
+        (keys of `ranks` are strings from custom_cf.AGE_KEYS / WORK_KEYS; missing = 0)."""
+        a = agents_ages.reshape(-1).long()
+        rank = torch.zeros(a.shape[0], device=a.device)
+        for key, r in ranks.items():
+            if key in AGE_KEYS:
+                rank = rank + float(r) * (a == AGE_KEYS[key]).float()
+            else:
+                e = self._require_agent_essential()
+                rank = rank + float(r) * (e == WORK_KEYS[key]).float()
+        return rank
+
     def administer_vaccines(self, current_stages, mode, t, agents_ages,
-                            num_vaccines, doses_by_band=None, tau=0.1):
+                            num_vaccines, doses_by_band=None, tau=0.1, ranks=None):
         """Single entry point for vaccination. Every caller names its mode;
         there is no default (Tasks/factual_vaccine_allocation.md section 3.3)."""
         if mode not in VACC_MODES:
@@ -1360,6 +1400,12 @@ class NewTransmission(SubstepTransitionMessagePassing):
             return self.apply_vaccines(current_stages, num_vaccines, t=t,
                                        agents_ages=agents_ages,
                                        priority=AGE_PRIORITY[mode], tau=tau)
+        if mode == "custom_rank":
+            if not ranks:
+                raise RuntimeError("administer_vaccines: mode='custom_rank' needs ranks")
+            return self.apply_vaccines(current_stages, num_vaccines, t=t,
+                                       agents_ages=agents_ages, tau=tau,
+                                       agent_rank=self._custom_agent_rank(ranks, agents_ages))
         if mode == "essential_first":
             return self.apply_vaccines(current_stages, num_vaccines, t=t,
                                        agents_ages=agents_ages,
@@ -1455,8 +1501,33 @@ class NewTransmission(SubstepTransitionMessagePassing):
         # Work-essentiality CF family (19/20/22/23): non-essential-only workplace
         # closure. A contact lever, not an allocation lever.
         essential_edge_mask = None
+        nonessential_intervention = 1
+        vacc_ranks = None
+        selective_occ = False
 
-        if generating_counterfactual:
+        if generating_counterfactual and cf_type == CUSTOM_CF_TYPE:
+            # CF 99: every lever for day t comes from the CF_SPEC file (covid_abm/custom_cf.py)
+            ccf = self._get_custom_cf()
+            if t == 0:
+                print(f"Counterfactual Type: {cf_type} (custom: {ccf.name}, {ccf.spec_path})")
+            d = ccf.day(t)
+            school_intervention = d["school"]
+            occ_intervention = d["occ_essential"]
+            nonessential_intervention = d["occ_nonessential"]
+            selective_occ = d["selective"]
+            m = d["dose_multiplier"]
+            num_vaccines = num_vaccines * m
+            if doses_by_band is not None:
+                doses_by_band = {b: q * m for b, q in doses_by_band.items()}
+            if isinstance(d["priority"], dict):
+                vacc_mode, vacc_ranks = "custom_rank", d["priority"]["ranks"]
+            else:
+                vacc_mode = d["priority"]
+            if _forced_uniform and vacc_mode == "factual":
+                vacc_mode = "uniform"
+            if vacc_mode == "none":
+                num_vaccines = 0
+        elif generating_counterfactual:
             if (t == 0):
                 print(f"Counterfactual Type: {cf_type}")
 
@@ -1528,25 +1599,28 @@ class NewTransmission(SubstepTransitionMessagePassing):
             if vacc_mode == "none":
                 num_vaccines = 0
 
-            if cf_type in CF_SELECTIVE_OCC:
-                e = self._require_agent_essential()
-                occ_t = self.networks['occ'][self._net_t(t)]
-                em_u = e[occ_t[:, 0]] == 1
-                em_v = e[occ_t[:, 1]] == 1
-                # within-sector-edge invariant: both endpoints agree unless one
-                # endpoint is a non-worker (code 0) that slipped into an occ net
-                if not bool(((e[occ_t[:, 0]] == e[occ_t[:, 1]]) |
-                             (e[occ_t[:, 0]] == 0) | (e[occ_t[:, 1]] == 0)).all()):
-                    raise RuntimeError(
-                        f"occ net t={t} has an edge crossing the essential boundary "
-                        f"({self.config['simulation_metadata']['POPULATION']})")
-                essential_edge_mask = em_u & em_v
+            selective_occ = cf_type in CF_SELECTIVE_OCC
+
+        if generating_counterfactual and selective_occ:
+            e = self._require_agent_essential()
+            occ_t = self.networks['occ'][self._net_t(t)]
+            em_u = e[occ_t[:, 0]] == 1
+            em_v = e[occ_t[:, 1]] == 1
+            # within-sector-edge invariant: both endpoints agree unless one
+            # endpoint is a non-worker (code 0) that slipped into an occ net
+            if not bool(((e[occ_t[:, 0]] == e[occ_t[:, 1]]) |
+                         (e[occ_t[:, 0]] == 0) | (e[occ_t[:, 1]] == 0)).all()):
+                raise RuntimeError(
+                    f"occ net t={t} has an edge crossing the essential boundary "
+                    f"({self.config['simulation_metadata']['POPULATION']})")
+            essential_edge_mask = em_u & em_v
 
 
         school_net = self.apply_intervention_fast(school_intervention, self.school_net, t, "school")
         occ_net = self.apply_intervention_fast(occ_intervention,
                                                self.networks['occ'][self._net_t(t)], t, "occ",
-                                               essential_edge_mask=essential_edge_mask)
+                                               essential_edge_mask=essential_edge_mask,
+                                               nonessential_intervention=nonessential_intervention)
 
         _rand_net = self.networks['rand'][self._net_t(t)]
         combined_net = torch.cat([
@@ -1595,6 +1669,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
             self.essential_incidence_history = []
             self.layer_attribution_history = []
             self.r_t_history = []
+            self._cum_hh_quota = 0   # household-allocation dose counter (a CF 99 hh mode may start after t=0)
 
         R = (R_tensor.T * week_one_hot).sum()
 
@@ -1790,7 +1865,7 @@ class NewTransmission(SubstepTransitionMessagePassing):
         if with_vacc:
             current_stages = self.administer_vaccines(
                 current_stages, vacc_mode, t, agents_ages, num_vaccines,
-                doses_by_band=doses_by_band,
+                doses_by_band=doses_by_band, ranks=vacc_ranks,
             )
             # Vaccination takes precedence over a same-step exposure: only
             # SUSCEPTIBLE agents can become EXPOSED, and these are no longer

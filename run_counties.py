@@ -1,7 +1,7 @@
 """Calibrate -> run -> SEIRV check for several counties (section 10 of the README, one county after another).
 
-    .venv/bin/python run_counties.py --config config_simple.yaml --run-name simple
-    .venv/bin/python run_counties.py --config config_simple.yaml --run-name simple --counties 13013 17037
+    .venv/bin/python run_counties.py --config config.yaml --run-name simple
+    .venv/bin/python run_counties.py --config config.yaml --run-name simple --counties 13013 17037
     sbatch run_counties.sbatch                      # 3 GPUs; the counties are split over the array tasks
 
 Which counties: --counties if given, else run_settings.COUNTIES in the config:
@@ -109,8 +109,8 @@ def select_counties(cli, config):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--config", default="config_simple.yaml")
-    ap.add_argument("--run-name", default="simple")
+    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--run-name", default="run")
     ap.add_argument("--counties", nargs="*", help="FIPS codes or 'all' (default: run_settings.COUNTIES of the config)")
     ap.add_argument("--queue", metavar="DIR",
                     help="shared claim folder: every array task walks the whole list and runs the counties it claims "
